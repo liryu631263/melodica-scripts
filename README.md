@@ -20,13 +20,16 @@
 
 ## 快速启动
 
-双击 `start.bat`（或在项目目录运行 `python start.py`）出现菜单，选择要用的模块：
+双击 `start.bat`（或在项目目录运行 `python start.py`）：自动启动后端服务，并用默认浏览器打开前端页面。
 
-```
-[1] 模拟器试听      [2] 交互检索     [3] 游戏演奏
-[4] 曲谱翻译        [5] 本地曲库列表
-[6] 桌面前端（有 app.py 时显示）  [7] 网页前端（有 web.py 时显示）
-[0] 退出
+其它入口仍可单独运行：
+
+```bash
+python main.py scores/xxx.mel   # 游戏演奏
+python search.py                # 交互检索（本地/联网）
+python translate.py xxx.mid     # 曲谱翻译
+python library.py               # 本地曲库列表
+python simulator.py             # 口风琴模拟器（GUI）
 ```
 
 ## 口风琴模拟器（推荐先用这个）
