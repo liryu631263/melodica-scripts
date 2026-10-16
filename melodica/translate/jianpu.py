@@ -19,7 +19,7 @@
 
 import re
 
-from melodica import DEGREE_TO_SEMITONE
+from melodica.core.notes import DEGREE_TO_SEMITONE
 
 _TONE_TO_PC = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}
 

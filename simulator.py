@@ -15,9 +15,9 @@ import time
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
-import audio
-from melodica import Note
-from score import load_score, ScoreError
+from melodica.core import audio
+from melodica.core.notes import Note
+from melodica.core.score import load_score, ScoreError
 
 DEGREES = (1, 2, 3, 4, 5, 6, 7, 8)  # 8 = 高音 1
 KEY_LABELS = {1: 'Z', 2: 'X', 3: 'C', 4: 'V', 5: 'B', 6: 'N', 7: 'M', 8: ','}

@@ -20,10 +20,9 @@ import argparse
 import os
 import sys
 
-import jianpu
-import midi_import
-from melodica import Note, pitch_to_note
-from score import notes_to_text
+from melodica.core.notes import Note, pitch_to_note
+from melodica.core.score import notes_to_text
+from melodica.translate import jianpu, midi_import
 
 # 自然音区（不按鼠标）对应的 MIDI 范围：C5(72) ~ C♯6(85)
 _SWEET_LO, _SWEET_HI = 72, 85

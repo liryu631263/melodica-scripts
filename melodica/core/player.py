@@ -2,7 +2,7 @@
 
 import time
 
-from input_backend import is_key_down, VK_F12
+from melodica.core.input_backend import is_key_down, VK_F12
 
 
 class Player:

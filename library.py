@@ -15,7 +15,7 @@ import os
 import re
 import sys
 
-import score as score_mod
+from melodica.core import score as score_mod
 
 LIB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scores')
 

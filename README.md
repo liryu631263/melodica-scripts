@@ -180,19 +180,22 @@ python search.py "fur elise" --online --limit 5     # 限制结果数
 ## 目录结构
 
 ```
-melodica.py        # 音符模型 + 键位/扫描码映射 + 音高↔键位转换
-score.py           # .mel 曲谱解析 / 序列化（文本 <-> Note 序列）
-input_backend.py   # Win32 SendInput 键鼠注入 + 停止热键轮询
-player.py          # 播放引擎（BPM 定时调度，进游戏演奏用）
-audio.py           # 音色合成与播放（模拟器发声用）
-simulator.py       # 口风琴模拟器（GUI，无需游戏）
-main.py            # 命令行入口（进游戏演奏用）
-midi_import.py     # MIDI 解析（.mid -> 各轨音符，需 mido）
-jianpu.py          # 简谱文本解析（调号/八度/时值 -> 音高事件）
-translate.py       # 曲谱翻译（MIDI/简谱 -> .mel）
-library.py         # 本地曲库检索（扫描/别名/模糊匹配）
-search.py          # 交互式检索入口（本地曲库 / --online 联网）
-net_search.py      # 网络检索（scoreseek：搜公开 MIDI 站 + 下载）
+main.py            # 入口：游戏演奏（命令行）
+search.py          # 入口：交互式检索（本地曲库 / --online 联网）
+translate.py       # 入口：曲谱翻译（MIDI/简谱 -> .mel）
+library.py         # 入口：本地曲库检索（扫描/别名/模糊匹配）
+simulator.py       # 入口：口风琴模拟器（GUI，无需游戏）
+melodica/          # 核心包（库代码，按功能分两个子包）
+  core/            #   核心演奏引擎
+    notes.py       #     音符模型 + 键位/扫描码映射 + 音高↔键位转换（原 melodica.py）
+    score.py       #     .mel 曲谱解析 / 序列化（文本 <-> Note 序列）
+    audio.py       #     音色合成与播放（模拟器发声用）
+    input_backend.py #    Win32 SendInput 键鼠注入 + 停止热键轮询
+    player.py      #     播放引擎（BPM 定时调度，进游戏演奏用）
+  translate/       #   翻译/曲库底层
+    jianpu.py      #     简谱文本解析（调号/八度/时值 -> 音高事件）
+    midi_import.py #     MIDI 解析（.mid -> 各轨音符，需 mido）
+    net_search.py  #     网络检索（scoreseek：搜公开 MIDI 站 + 下载）
 scores/            # 本地曲库（示例曲谱）
 downloads/         # 网络检索下载的曲谱（运行时生成）
 ```

@@ -61,7 +61,7 @@ def _pick(items, index=None):
 
 def _online_search(kw, args):
     try:
-        import net_search
+        from melodica.translate import net_search
     except net_search.NetSearchError as e:
         print(f'网络检索不可用：{e}')
         return None

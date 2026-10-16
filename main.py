@@ -17,9 +17,9 @@
 import argparse
 import sys
 
-from score import load_score, ScoreError
-from input_backend import create_backend, VK_F12
-from player import Player
+from melodica.core.score import load_score, ScoreError
+from melodica.core.input_backend import create_backend, VK_F12
+from melodica.core.player import Player
 
 
 def _reconfigure_utf8():

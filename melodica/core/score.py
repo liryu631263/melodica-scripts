@@ -16,7 +16,7 @@
 
 import re
 
-from melodica import Note
+from melodica.core.notes import Note
 
 _TOKEN_RE = re.compile(r"^(?P<prefix>[-+#]*)(?P<degree>[0-8])(?::(?P<beats>\d+(?:\.\d+)?))?$")
 
