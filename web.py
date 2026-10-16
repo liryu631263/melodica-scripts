@@ -122,6 +122,7 @@ INDEX_HTML = r"""<!doctype html>
 <script>
 let items = [];
 let selected = null;
+let lastHint = null;
 let audio = document.getElementById('audio');
 
 async function search(refresh) {
@@ -131,21 +132,27 @@ async function search(refresh) {
   setStatus(refresh ? '刷新中…' : (mode === 'online' ? '联网搜索中，请稍候…' : '搜索中…'));
   try {
     const r = await fetch('/api/search?q=' + encodeURIComponent(q) + '&mode=' + mode);
-    items = await r.json();
+    const d = await r.json();
+    items = d.items; lastHint = d.hint;
     render();
     setStatus('共 ' + items.length + ' 条结果，点击选中。');
   } catch (e) { setStatus('搜索失败：' + e, true); }
 }
 
 async function list() {
-  items = await (await fetch('/api/search?q=&mode=local')).json();
+  const d = await (await fetch('/api/search?q=&mode=local')).json();
+  items = d.items; lastHint = d.hint;
   render();
   setStatus('共 ' + items.length + ' 首本地曲谱。');
 }
 
 function render() {
   const el = document.getElementById('list');
-  if (!items.length) { el.innerHTML = '<div class="row muted">无匹配结果。</div>'; return; }
+  if (!items.length) {
+    el.innerHTML = '<div class="row muted">无匹配结果。' +
+      (lastHint ? '<br>' + esc(lastHint) : '') + '</div>';
+    return;
+  }
   el.innerHTML = items.map((it, i) =>
     '<div class="row" id="row' + i + '" onclick="select(' + i + ')">' +
     '<span class="title">' + esc(it.title) + '</span>' +
@@ -331,7 +338,12 @@ class Handler(BaseHTTPRequestHandler):
         hits = self.server.hits = {}
         self.server.resolved = {}
         if mode == 'online':
-            items = net_search.search_online(query, limit=10) if query else []
+            try:
+                items = net_search.search_online(query, limit=10) if query else []
+            except net_search.NetSearchError as e:
+                self._json(200, {'items': [], 'hint': str(e)})
+                return
+            hint = net_search.no_result_hint(query) if (query and not items) else None
             out = []
             for i, h in enumerate(items):
                 iid = 'o%d' % i
@@ -339,7 +351,7 @@ class Handler(BaseHTTPRequestHandler):
                             'source': '网络', 'n_notes': None, 'bpm': None}
                 hits[iid] = h
                 out.append(reg[iid])
-            self._json(200, out)
+            self._json(200, {'items': out, 'hint': hint})
         else:
             items = library.search(query, library.scan()) if query else library.scan()
             out = []
@@ -349,7 +361,7 @@ class Handler(BaseHTTPRequestHandler):
                             'source': '本地', 'n_notes': it['n_notes'], 'bpm': it['bpm'],
                             'path': it['path']}
                 out.append(reg[iid])
-            self._json(200, out)
+            self._json(200, {'items': out, 'hint': None})
 
     def _score(self, q):
         mel = self._resolve(q.get('id', [''])[0])

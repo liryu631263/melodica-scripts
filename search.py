@@ -75,7 +75,7 @@ def _online_search(kw, args):
 
     if not hits:
         print('未找到 MIDI 结果。')
-        print('提示：公开 MIDI 站以英文歌名为主，可试试英文名；或去掉 --online 用本地曲库。')
+        print(net_search.no_result_hint(kw))
         return None
 
     print(f'找到 {len(hits)} 条 MIDI（公开站点，灰色版权，仅供个人练习）：')
@@ -116,6 +116,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(description='曲库检索 + 试听/演奏（本地 / 网络）')
     p.add_argument('keyword', nargs='?', default=None, help='曲名（省略则交互输入）')
     p.add_argument('--online', action='store_true', help='网络检索公开 MIDI 源（需 pip install scoreseek）')
+    p.add_argument('--download-lakh', action='store_true', help='下载 Lakh MIDI 数据集（约 234MB，扩充网络检索曲库）')
     p.add_argument('--limit', type=int, default=10, help='网络搜索结果数上限（默认 10）')
     p.add_argument('--pick', type=int, default=None, help='直接选第 N 条结果（跳过选择提示）')
     p.add_argument('--min-sharps', action='store_true', help='翻译时自动选调，尽量少用升半音')
@@ -126,6 +127,11 @@ def main(argv=None):
     p.add_argument('--show', action='store_true', help='只显示曲谱内容')
     p.add_argument('--dir', default=library.LIB_DIR, help='本地曲库目录')
     args = p.parse_args(argv)
+
+    if args.download_lakh:
+        from melodica.translate import net_search
+        net_search.download_lakh()
+        return 0
 
     kw = args.keyword or input('请输入曲名：').strip()
     if not kw:

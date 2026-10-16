@@ -6,3 +6,8 @@
 可运行入口脚本（main.py / search.py / translate.py / library.py / simulator.py 等）
 位于仓库根目录。
 """
+
+import os
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 仓库根目录
+

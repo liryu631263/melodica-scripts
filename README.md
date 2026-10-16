@@ -168,11 +168,19 @@ python translate.py song.mid --out scores/我的曲子.mel
 python search.py "happy birthday" --online          # 联网搜索 + 选曲 + 试听/演奏
 python search.py "canon" --online --pick 1 --sim    # 直接下第 1 条并试听
 python search.py "fur elise" --online --limit 5     # 限制结果数
+python search.py --download-lakh                   # 下载 Lakh 数据集（约 234MB，扩充欧美曲库）
 ```
 
 - 结果来自公开 MIDI 站（bitmidi / midis101 / midiworld），**灰色版权内容，仅供个人练习，请勿分发**。
 - 下载后自动翻译成 `.mel`，存到 `downloads/` 目录。
-- 以英文歌名为主，中文流行歌命中率低；MIDI 多为多轨编曲，若主旋律不对可用 `--track N` 换轨。
+- 可下载 **Lakh MIDI 数据集**（约 1.7 万首欧美流行/经典歌）扩充检索命中率；放到 `lakh/` 目录后自动启用。
+- **中文流行歌几乎没有公开免费 MIDI 源**，搜索命中率低是内容覆盖问题、不是 bug。中文歌建议改用「简谱文本」翻译：
+
+  ```bash
+  python translate.py 简谱.txt --out scores/我的曲子.mel
+  ```
+
+- MIDI 多为多轨编曲，若主旋律不对可用 `--track N` 换轨。
 
 ## 游戏内任务曲谱（节奏/变调为推测，需实测微调）
 
