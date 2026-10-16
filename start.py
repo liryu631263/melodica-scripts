@@ -1,6 +1,6 @@
 """口风琴工具启动器 —— 菜单式选择要运行的模块。
 
-双击 start.bat（或在项目目录运行 `python launcher.py`）即可。
+双击 start.bat（或在项目目录运行 `python start.py`）即可。
 菜单会根据当前分支自动显示可用的前端（app.py / web.py）。
 """
 
