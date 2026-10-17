@@ -5,7 +5,7 @@
     python translate.py input.txt [选项]     # 简谱文本（.txt/.jianpu/.jp）
 
 选项：
-    --track N       选择 MIDI 轨道（默认音符最多的轨）
+    --track N       选择 MIDI 轨道（默认自动选最像主旋律的轨）
     --transpose N   额外移调 N 个半音（可为负）
     --min-sharps    自动选调，尽量少用「升半音」（降低演奏难度）
     --bpm N         覆盖输出速度
@@ -68,6 +68,45 @@ def _octave_fit(pitches):
     return shift
 
 
+def _pick_track(tracks):
+    """自动选主旋律轨：优先「单声部、中高音、音域适中」的旋律轨，退回音符最多的轨。
+
+    只按「音符最多」选，常误选到钢琴伴奏 / 和弦轨（重叠率高、音域宽），
+    提取其最高音会得到一堆高音装饰音（如 +#8）。这里先筛掉明显是伴奏的轨，
+    再从候选里挑最像人声/主旋律的（重叠少、音域窄、音符多）。
+    """
+    def _overlap_rate(tr):
+        n = len(tr)
+        if n < 2:
+            return 1.0
+        ov = sum(1 for a, b in zip(tr, tr[1:]) if b.start < a.start + a.duration - 1e-9)
+        return ov / (n - 1)
+
+    def _melody_score(tr):
+        n = len(tr)
+        ps = [x.pitch for x in tr]
+        rng = max(ps) - min(ps)
+        return n * (1 - _overlap_rate(tr)) * (1 - rng / 60)
+
+    candidates = []
+    for i, tr in enumerate(tracks):
+        if len(tr) < 16:            # 音符太少，不像完整旋律
+            continue
+        ps = [x.pitch for x in tr]
+        lo, hi = min(ps), max(ps)
+        if hi < 52:                 # 低音轨
+            continue
+        if hi - lo > 36:            # 全键盘 / 宽音域伴奏
+            continue
+        if _overlap_rate(tr) > 0.5:  # 密集和弦
+            continue
+        candidates.append(i)
+    if candidates:
+        return max(candidates, key=lambda i: _melody_score(tracks[i]))
+    # 没有明显旋律轨时，退回音符最多的轨（保持原有行为）
+    return max(range(len(tracks)), key=lambda i: len(tracks[i]))
+
+
 def events_to_notes(events, grid=0.25, transpose=0, min_sharps=False):
     """把 (pitch|None, beats) 事件序列翻译成 Note 序列。"""
     # 1. 时值量化
@@ -121,7 +160,7 @@ def main(argv=None):
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument('input', help='输入文件：.mid/.midi（MIDI）或 .txt/.jianpu/.jp（简谱文本）')
-    p.add_argument('--track', type=int, default=None, help='选择 MIDI 轨道（默认音符最多的轨）')
+    p.add_argument('--track', type=int, default=None, help='选择 MIDI 轨道（默认自动选最像主旋律的轨）')
     p.add_argument('--transpose', type=int, default=0, help='额外移调 N 个半音')
     p.add_argument('--min-sharps', action='store_true', help='自动选调，尽量少用升半音')
     p.add_argument('--bpm', type=float, default=None, help='覆盖输出速度')
@@ -147,7 +186,7 @@ def main(argv=None):
                 return 1
             ti = args.track
         else:
-            ti = max(range(len(tracks)), key=lambda i: len(tracks[i]))
+            ti = _pick_track(tracks)
         raw = tracks[ti]
         print(f"MIDI 共 {len(tracks)} 轨，选择第 {ti} 轨（{len(raw)} 个音符）。")
         if len(tracks) > 1:

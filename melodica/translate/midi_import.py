@@ -33,7 +33,7 @@ def parse_midi(path):
         for msg in track:
             abs_tick += msg.time
             if msg.type == 'set_tempo':
-                bpm = 60_000_000 / msg.tempo
+                bpm = round(60_000_000 / msg.tempo, 2)
             elif msg.type == 'note_on' and msg.velocity > 0:
                 open_notes.setdefault(msg.note, abs_tick)
             elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
