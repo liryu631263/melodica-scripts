@@ -151,3 +151,83 @@ def _parse_beats(mod):
         elif ch == '.':
             beats *= 1.5
     return beats
+
+
+def json_to_events(data):
+    """把视觉模型返回的结构化 JSON dict 转成 (events, bpm)。
+
+    events = [(pitch|None, beats), ...]，pitch 为绝对 MIDI 音高（与 parse_jianpu 同口径）。
+    只做「调号 + 音级 + 八度 → 音高」的机械换算，不选调、不量化。
+    """
+    key = str(data.get('key', 'C') or 'C').strip()
+    tonic = key[0].upper() if key else 'C'
+    if tonic not in _TONE_TO_PC:
+        tonic = 'C'
+    bpm = float(data.get('bpm') or 96.0)
+    events = []
+    for it in data.get('notes') or []:
+        if not isinstance(it, dict):
+            continue
+        try:
+            d = int(it.get('d', 0))
+            o = int(it.get('o', 0))
+            b = float(it.get('b', 1.0) or 1.0)
+        except (TypeError, ValueError):
+            continue
+        if b <= 0:
+            b = 1.0
+        if d == 0:
+            events.append((None, b))
+        elif 1 <= d <= 7:
+            pitch = 60 + _TONE_TO_PC[tonic] + 12 * o + DEGREE_TO_SEMITONE[d - 1]
+            events.append((pitch, b))
+        # 非法音级直接跳过
+    if not events:
+        raise JianpuError("识图结果中没有解析到任何音符。")
+    return events, bpm
+
+
+def _beats_suffix(b):
+    """把拍数渲染成简谱时值记号（近似，仅用于展示/存档）。"""
+    if b == 1.0:
+        return ''
+    if b == 0.5:
+        return '_'
+    if b == 0.25:
+        return '__'
+    if b == 0.75:
+        return '_.'
+    if b == 1.5:
+        return '.'
+    if b == int(b) and b >= 2:
+        return '-' * (int(b) - 1)
+    return ''
+
+
+def json_to_jianpu_text(data):
+    """把视觉模型返回的 JSON dict 渲染成人类可读的简谱文本（供前端展示与 txt 存档）。"""
+    key = str(data.get('key', 'C') or 'C').strip() or 'C'
+    bpm = data.get('bpm', 96)
+    lines = [f'1={key}', f'T={bpm:g}']
+    row = []
+    for it in data.get('notes') or []:
+        if not isinstance(it, dict):
+            continue
+        try:
+            d = int(it.get('d', 0))
+            o = int(it.get('o', 0))
+            b = float(it.get('b', 1.0) or 1.0)
+        except (TypeError, ValueError):
+            continue
+        if d == 0:
+            tok = '0'
+        else:
+            tok = str(d) + ("'" * o if o > 0 else ',' * (-o) if o < 0 else '')
+        tok += _beats_suffix(b)
+        row.append(tok)
+        if len(row) >= 16:
+            lines.append(' '.join(row))
+            row = []
+    if row:
+        lines.append(' '.join(row))
+    return '\n'.join(lines) + '\n'
