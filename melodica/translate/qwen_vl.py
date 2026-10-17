@@ -16,6 +16,7 @@ import urllib.error
 import urllib.request
 
 from melodica import ROOT
+from melodica.translate import jianpu
 
 DEFAULT_BASE_URL = 'https://llm-n2tr15mt28kgsvtu.cn-beijing.maas.aliyuncs.com/compatible-mode/v1'
 DEFAULT_MODEL = 'qwen3-vl-plus'
@@ -28,8 +29,6 @@ _MIME = {
     '.gif': 'image/gif',
     '.bmp': 'image/bmp',
 }
-
-_MODIFIERS = set("'-_.,")
 
 
 class QwenError(RuntimeError):
@@ -140,17 +139,8 @@ def transcribe(image_path, model=None):
 
 
 def _normalize_jianpu(text):
-    """修正常见 LLM 输出：把与数字分开的时值/八度记号并回数字（如 `5 -` → `5-`）。"""
-    out = []
-    for line in text.splitlines():
-        merged = []
-        for tok in line.split():
-            if tok and set(tok) <= _MODIFIERS and merged and merged[-1] != '|':
-                merged[-1] += tok
-            else:
-                merged.append(tok)
-        out.append(' '.join(merged))
-    return '\n'.join(out)
+    """修正常见 LLM/OCR 输出（粘连音符、`i`→`1'` 等），复用简谱解析器的清洗逻辑。"""
+    return jianpu.normalize_jianpu(text)
 
 
 def _strip_fences(text):

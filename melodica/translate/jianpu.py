@@ -18,6 +18,7 @@
 """
 
 import re
+import sys
 
 from melodica.core.notes import DEGREE_TO_SEMITONE
 
@@ -26,6 +27,48 @@ _TONE_TO_PC = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}
 _KEY_RE = re.compile(r"^1\s*=\s*([A-Ga-g][#b]?)\b")
 _TEMPO_RE = re.compile(r"^T\s*=\s*(\d+(?:\.\d+)?)\s*$", re.IGNORECASE)
 _TOKEN_RE = re.compile(r"^(?P<acc>[#b]?)(?P<deg>[0-7])(?P<mod>[',_.-]*)$")
+
+_MODIFIERS = set("'-_.,")
+_NOTE_RE = re.compile(r"[#b]?[0-7][',_.-]*")
+
+
+def normalize_jianpu(text):
+    """清洗简谱文本（视觉识图/LLM 输出的常见噪声），返回可解析的干净文本。
+
+    - 字母 `i`/`I` 常被误认为高音 do，还原成 `1'`（如 `i`→`1'`、`2i`→`2 1'`、`i7`→`1' 7`）
+    - 把与数字分离的时值/八度记号并回（`5 -`→`5-`、`1 '`→`1'`）
+    - 拆开被粘连的音符（`67`→`6 7`、`166`→`1 6 6`、`2_5`→`2_ 5`）
+
+    只处理音符行；调号/速度/注释行原样保留。
+    """
+    out = []
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or _KEY_RE.match(s) or _TEMPO_RE.match(s):
+            out.append(s)
+            continue
+        if s.startswith('#') and not (len(s) > 1 and s[1].isdigit()):
+            out.append(s)
+            continue
+        # 1. 高音 do 的字母 i/I 还原
+        s = s.replace('I', "1'").replace('i', "1'")
+        # 2. 孤立的修饰符 token 并回前一个音符
+        toks = []
+        for tok in s.split():
+            if tok and set(tok) <= _MODIFIERS and toks and toks[-1] != '|':
+                toks[-1] += tok
+            else:
+                toks.append(tok)
+        # 3. 按音符边界拆开粘连
+        merged = []
+        for tok in toks:
+            if tok == '|':
+                merged.append(tok)
+                continue
+            pieces = _NOTE_RE.findall(tok)
+            merged.extend(pieces if pieces else [tok])
+        out.append(' '.join(merged))
+    return '\n'.join(out)
 
 
 class JianpuError(ValueError):
@@ -39,9 +82,11 @@ class JianpuError(ValueError):
 
 def parse_jianpu(text, default_bpm=96.0):
     """解析简谱文本，返回 (events, bpm)。events = [(pitch|None, beats), ...]。"""
+    text = normalize_jianpu(text)
     tonic = 'C'
     bpm = default_bpm
     events = []
+    skipped = 0
 
     for lineno, raw in enumerate(text.splitlines(), start=1):
         line = raw.strip()
@@ -59,12 +104,17 @@ def parse_jianpu(text, default_bpm=96.0):
             continue  # 注释行
 
         for token in line.split():
-            if token == '|':
-                continue
-            events.append(_parse_token(token, tonic, lineno))
+            if token and set(token) <= {'|'}:
+                continue  # 小节线 / 终止线（|、|| 等）
+            try:
+                events.append(_parse_token(token, tonic, lineno))
+            except JianpuError:
+                skipped += 1  # 残留的无法识别记号（歌词等）直接跳过，不中断整首翻译
 
     if not events:
         raise JianpuError("简谱为空，没有解析到任何音符。")
+    if skipped:
+        print(f"警告：已跳过 {skipped} 个无法识别的简谱记号。", file=sys.stderr)
     return events, bpm
 
 

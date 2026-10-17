@@ -7,7 +7,7 @@ CLI 与 Web 后端共用同一套逻辑，避免两处实现不一致。
 import os
 
 from melodica import ROOT
-from melodica.translate import jianpujia, qwen_vl
+from melodica.translate import jianpu, jianpujia, qwen_vl
 
 DOWNLOADS = os.path.join(ROOT, 'downloads')
 SCORES = os.path.join(ROOT, 'scores')
@@ -47,19 +47,30 @@ def transcribe_hit(hit, min_sharps=False, bpm=None, model=None, translate=True):
     if not translate:
         return result
 
-    mel_path = os.path.join(SCORES, base + '.mel')
-    argv = [txt_path, '--out', mel_path]
-    if min_sharps:
-        argv.append('--min-sharps')
-    if bpm is not None:
-        argv += ['--bpm', str(bpm)]
-
+    # 直接走「解析 + 自然音阶量化」，不走 CLI，便于把具体错误透传给前端/控制台
+    from melodica.core.score import notes_to_text
     import translate as translate_cli
-    print('翻译成 .mel ……')
-    if translate_cli.main(argv) != 0:
-        raise RuntimeError('翻译失败，见上方控制台输出。')
 
-    from melodica.core.score import load_score
-    notes, out_bpm = load_score(mel_path)
+    print('翻译成 .mel ……')
+    try:
+        with open(txt_path, encoding='utf-8') as f:
+            text = f.read()
+        events, parsed_bpm = jianpu.parse_jianpu(text)
+    except jianpu.JianpuError as e:
+        raise RuntimeError(f'识图出的简谱无法解析：{e}') from e
+
+    out_bpm = bpm if bpm is not None else parsed_bpm
+    notes = translate_cli.events_to_notes(events, min_sharps=min_sharps)
+    # 去首尾休止（与 translate.py 保持一致，避免开头/结尾空等）
+    while notes and notes[0].is_rest:
+        notes.pop(0)
+    while notes and notes[-1].is_rest:
+        notes.pop()
+
+    mel_path = os.path.join(SCORES, base + '.mel')
+    with open(mel_path, 'w', encoding='utf-8') as f:
+        f.write(notes_to_text(notes, out_bpm))
+
     result.update({'mel_path': mel_path, 'n_notes': len(notes), 'bpm': out_bpm})
+    print(f'已翻译 {len(notes)} 个音符 -> {os.path.relpath(mel_path)}（BPM={out_bpm:g}）。')
     return result
