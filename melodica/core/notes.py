@@ -1,8 +1,13 @@
 """三角洲行动 口风琴 —— 音符模型与键位映射。
 
 游戏内吹奏模式键位（PC 端，建议英文输入法）：
-  音符键 : Z X C V B N M ,  ->  1 2 3 4 5 6 7 8（8 = 高音 1）
-  变调键 : 按住鼠标左键 = 降八度；按住右键 = 升八度；按住中键 = 升半音。
+  音符键 : Z X C V B N M  ->  1 2 3 4 5 6 7（do~si 七个自然音）
+  变调键 : 按住鼠标右键 = 升八度；部分工具/曲谱中，左键降八度、中键升半音
+           （左键/中键在游戏内并不可靠，翻译时统一量化到自然音阶，不用升半音）。
+
+  说明：早期版本还假设过「8 = 高音1（逗号键）」，实测游戏只有 7 个音键，
+  高音 do 应写作 +1（升八度）。degree 8 / sharp 字段保留以兼容旧曲谱，
+  但翻译不再输出。
 
 本模块用「键盘物理扫描码」表示键位（与输入法/键盘布局无关），见 DEGREE_TO_SCAN。
 """
@@ -65,6 +70,23 @@ class Note:
         if self.is_rest:
             return None
         return 72 + 12 * self.octave + (1 if self.sharp else 0) + DEGREE_TO_SEMITONE[self.degree - 1]
+
+
+# 游戏口风琴实际音阶：do~si 七个自然音（大调音阶，模 12 半音），无「高音1」独立键。
+# 八度靠鼠标左/右键降/升；升半音在游戏中并不可靠，翻译时统一量化到自然音阶。
+MAJOR_PC = (0, 2, 4, 5, 7, 9, 11)  # 音级 1~7 相对 do 的半音数
+
+
+def pitch_to_natural_note(midi):
+    """把（已量化到 C 大调的）MIDI 音高映射为自然音阶 Note（音级 1-7 + 八度，无升半音）。
+
+    只接受落在 MAJOR_PC 上的音高（调用方需先量化），否则抛 ValueError。
+    """
+    midi = int(midi)
+    pc = midi % 12
+    degree = MAJOR_PC.index(pc) + 1
+    octave = (midi - 72 - MAJOR_PC[degree - 1]) // 12
+    return Note(degree=degree, octave=octave)
 
 
 def pitch_to_note(midi):
