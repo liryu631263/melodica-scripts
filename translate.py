@@ -82,12 +82,6 @@ def _pick_track(tracks):
         ov = sum(1 for a, b in zip(tr, tr[1:]) if b.start < a.start + a.duration - 1e-9)
         return ov / (n - 1)
 
-    def _melody_score(tr):
-        n = len(tr)
-        ps = [x.pitch for x in tr]
-        rng = max(ps) - min(ps)
-        return n * (1 - _overlap_rate(tr)) * (1 - rng / 60)
-
     candidates = []
     for i, tr in enumerate(tracks):
         if len(tr) < 16:            # 音符太少，不像完整旋律
@@ -96,13 +90,14 @@ def _pick_track(tracks):
         lo, hi = min(ps), max(ps)
         if hi < 52:                 # 低音轨
             continue
-        if hi - lo > 36:            # 全键盘 / 宽音域伴奏
+        if hi - lo > 48:            # 全键盘 / 宽音域伴奏
             continue
         if _overlap_rate(tr) > 0.5:  # 密集和弦
             continue
         candidates.append(i)
     if candidates:
-        return max(candidates, key=lambda i: _melody_score(tracks[i]))
+        # 主旋律：重叠越少越单声部；同等级下音符越多越完整（优先完整旋律而非某段片段）
+        return max(candidates, key=lambda i: len(tracks[i]) * (1 - _overlap_rate(tracks[i])))
     # 没有明显旋律轨时，退回音符最多的轨（保持原有行为）
     return max(range(len(tracks)), key=lambda i: len(tracks[i]))
 
@@ -211,6 +206,11 @@ def main(argv=None):
 
     bpm = args.bpm if args.bpm is not None else bpm
     notes = events_to_notes(events, grid=args.grid, transpose=args.transpose, min_sharps=args.min_sharps)
+    # 去掉开头/结尾的休止（无音乐意义，避免试听/演奏前空等几拍甚至几十秒）
+    while notes and notes[0].is_rest:
+        notes.pop(0)
+    while notes and notes[-1].is_rest:
+        notes.pop()
 
     if args.list_notes:
         print(f"共 {len(notes)} 个音符，BPM={bpm:g}：")
