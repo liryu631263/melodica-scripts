@@ -213,6 +213,7 @@ python agent.py 夜曲 --no-translate   # 只识图出简谱文本，不翻译
 - 视觉模型走 Qwen 百炼的 OpenAI 兼容接口，默认 `qwen3-vl-plus`；可用 `--model` 或环境变量 `QWEN_MODEL` 换模型。
 - 识图结果（简谱文本）先打印、并存到 `downloads/jianpu/<曲名>.txt`，方便人工核对/修改后再翻译。
 - 翻译失败时可手工改上面的文本，再 `python translate.py 该文本 --out scores/xxx.mel`。
+- 也可在 **Web 前端**（`start.py`）里操作：检索模式选「简谱」→ 点结果看图片 → 点「识图翻译」→ 试听/演奏。
 
 ## 游戏内任务曲谱（节奏/变调为推测，需实测微调）
 

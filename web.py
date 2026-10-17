@@ -24,10 +24,11 @@ from urllib.parse import parse_qs, urlparse
 
 import library
 import translate
+import urllib.request
 
 from melodica.core import audio
 from melodica.core.score import load_score
-from melodica.translate import net_search
+from melodica.translate import jianpujia, jianpu_agent, net_search
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DOWNLOADS = os.path.join(ROOT, 'downloads')
@@ -64,6 +65,7 @@ INDEX_HTML = r"""<!doctype html>
   .row .src { font-size: 12px; color: #fff; background: #94a3b8; padding: 1px 7px;
               border-radius: 10px; }
   .row .src.online { background: #0ea5e9; }
+  .row .src.jianpu { background: #d97706; }
   #panel { margin-top: 14px; display: flex; gap: 14px; flex-wrap: wrap; }
   #panel > * { flex: 1 1 400px; }
   .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; }
@@ -90,6 +92,7 @@ INDEX_HTML = r"""<!doctype html>
     <select id="mode">
       <option value="local">本地曲库</option>
       <option value="online">联网 MIDI</option>
+      <option value="jianpu">简谱</option>
     </select>
     <button class="primary" onclick="search()">搜索</button>
     <button onclick="search(true)">刷新</button>
@@ -103,6 +106,7 @@ INDEX_HTML = r"""<!doctype html>
       <h2 id="score-title">曲谱</h2>
       <div id="score"></div>
       <div class="actions">
+        <button id="ocrBtn" onclick="jianpuTranslate()" style="display:none">🖼 识图翻译</button>
         <button class="primary" onclick="preview()">▶ 试听</button>
         <button onclick="gamePlay()">🎮 游戏演奏</button>
         <button onclick="toLibrary()">✚ 入曲库</button>
@@ -129,9 +133,10 @@ async function search(refresh) {
   const q = refresh ? '' : document.getElementById('q').value.trim();
   const mode = document.getElementById('mode').value;
   if (!q && !refresh) { list(); return; }
-  setStatus(refresh ? '刷新中…' : (mode === 'online' ? '联网搜索中，请稍候…' : '搜索中…'));
+  setStatus(refresh ? '刷新中…' : (mode === 'online' ? '联网搜索中，请稍候…' : mode === 'jianpu' ? '简谱搜索中，请稍候…' : '搜索中…'));
   try {
-    const r = await fetch('/api/search?q=' + encodeURIComponent(q) + '&mode=' + mode);
+    const ep = mode === 'jianpu' ? '/api/jianpu' : '/api/search';
+    const r = await fetch(ep + '?q=' + encodeURIComponent(q) + '&mode=' + mode);
     const d = await r.json();
     items = d.items; lastHint = d.hint;
     render();
@@ -168,6 +173,12 @@ async function select(i) {
   document.getElementById('panel').style.display = 'flex';
   document.getElementById('score-title').textContent = '曲谱 · ' + selected.title;
   const sc = document.getElementById('score');
+  document.getElementById('ocrBtn').style.display = selected.kind === 'jianpu' ? '' : 'none';
+  if (selected.kind === 'jianpu') {
+    sc.innerHTML = '<img src="/api/jianpu_img?id=' + encodeURIComponent(selected.id) + '&n=0" alt="简谱" style="max-width:100%">';
+    setStatus('这是简谱图片，点「识图翻译」自动转成可演奏曲谱。');
+    return;
+  }
   if (selected.kind === 'local') { sc.textContent = '(点击「查看曲谱」或试听时载入)'; return; }
   setStatus('联网下载翻译中，请稍候…');
   try {
@@ -176,6 +187,23 @@ async function select(i) {
     sc.textContent = d.text;
     setStatus('已解析 ' + d.n_notes + ' 个音符。');
   } catch (e) { setStatus('下载/翻译失败：' + e, true); }
+}
+
+async function jianpuTranslate() {
+  if (!selected) return;
+  const ocrBtn = document.getElementById('ocrBtn');
+  ocrBtn.disabled = true;
+  setStatus('识图翻译中（Qwen 视觉识别，请稍候）…');
+  try {
+    const r = await fetch('/api/jianpu_translate?id=' + encodeURIComponent(selected.id), { method: 'POST' });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    document.getElementById('score').textContent = d.text;
+    selected = { id: d.id, title: d.title, kind: 'local', source: '简谱翻译', n_notes: d.n_notes, bpm: d.bpm };
+    ocrBtn.style.display = 'none';
+    setStatus('翻译完成：' + d.n_notes + ' 个音符，可试听 / 演奏 / 下载。');
+  } catch (e) { setStatus('识图翻译失败：' + e, true); }
+  finally { ocrBtn.disabled = false; }
 }
 
 function preview() {
@@ -298,6 +326,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, INDEX_HTML, 'text/html; charset=utf-8')
             elif path == '/api/search':
                 self._search(q)
+            elif path == '/api/jianpu':
+                self._jianpu_search(q)
+            elif path == '/api/jianpu_img':
+                self._jianpu_img(q)
             elif path == '/api/score':
                 self._score(q)
             elif path == '/api/audio':
@@ -325,6 +357,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, {'ok': True, 'message': '已入库：' + dest})
             elif path == '/api/import':
                 self._import(q)
+            elif path == '/api/jianpu_translate':
+                self._jianpu_translate(q)
             else:
                 self._json(404, {'error': 'not found'})
         except Exception as e:
@@ -362,6 +396,79 @@ class Handler(BaseHTTPRequestHandler):
                             'path': it['path']}
                 out.append(reg[iid])
             self._json(200, {'items': out, 'hint': None})
+
+    def _jianpu_search(self, q):
+        query = q.get('q', [''])[0].strip()
+        hits = self.server.jianpu_hits = {}
+        if not query:
+            self._json(200, {'items': [], 'hint': None})
+            return
+        try:
+            items = jianpujia.search(query, limit=10)
+        except Exception as e:
+            self._json(200, {'items': [], 'hint': '简谱之家搜索失败：' + str(e)})
+            return
+        out = []
+        for i, h in enumerate(items):
+            iid = 'j%d' % i
+            hits[iid] = h
+            out.append({'id': iid, 'title': h['title'], 'kind': 'jianpu',
+                        'source': '简谱之家', 'n_notes': None, 'bpm': None})
+        hint = None if items else '简谱之家未找到相关简谱，可换个关键词（曲名 / 歌手）。'
+        self._json(200, {'items': out, 'hint': hint})
+
+    def _jianpu_img(self, q):
+        hit = self.server.jianpu_hits.get(q.get('id', [''])[0])
+        if hit is None:
+            self._json(404, {'error': '无效的简谱 id'})
+            return
+        try:
+            urls = jianpujia.detail_images(hit['url'])
+        except Exception as e:
+            self._json(500, {'error': str(e)})
+            return
+        if not urls:
+            self._json(404, {'error': '未找到曲谱图片'})
+            return
+        try:
+            n = int(q.get('n', ['0'])[0] or '0')
+        except ValueError:
+            n = 0
+        url = urls[min(n, len(urls) - 1)]
+        req = urllib.request.Request(url, headers={
+            'User-Agent': jianpujia._HEADERS['User-Agent'],
+            'Referer': hit['url'],
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                data = r.read()
+                ctype = r.headers.get('Content-Type', 'image/png')
+        except Exception as e:
+            self._json(500, {'error': '图片下载失败：' + str(e)})
+            return
+        self._send(200, data, ctype)
+
+    def _jianpu_translate(self, q):
+        iid = q.get('id', [''])[0]
+        hit = self.server.jianpu_hits.get(iid)
+        if hit is None:
+            self._json(404, {'error': '无效的简谱 id'})
+            return
+        try:
+            result = jianpu_agent.transcribe_hit(hit, min_sharps=True)
+        except Exception as e:
+            self._json(500, {'error': str(e)})
+            return
+        nid = 'jp' + iid
+        self.server.registry[nid] = {
+            'id': nid, 'title': result['title'], 'kind': 'local',
+            'source': '简谱翻译', 'n_notes': result['n_notes'], 'bpm': result['bpm'],
+            'path': result['mel_path'],
+        }
+        self._json(200, {
+            'ok': True, 'id': nid, 'title': result['title'],
+            'text': result['text'], 'n_notes': result['n_notes'], 'bpm': result['bpm'],
+        })
 
     def _score(self, q):
         mel = self._resolve(q.get('id', [''])[0])
@@ -421,6 +528,7 @@ def main(argv=None):
     srv.registry = {}
     srv.hits = {}
     srv.resolved = {}
+    srv.jianpu_hits = {}
     print(f'口风琴工具 Web 界面：http://{args.host}:{args.port}')
     print('按 Ctrl+C 退出。')
     try:
