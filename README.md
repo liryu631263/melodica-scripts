@@ -16,6 +16,7 @@
 - 演奏 / 模拟器：**无需任何第三方库**（纯标准库 ctypes 实现）
 - 翻译 MIDI：需 `pip install mido`（只做演奏可不装）
 - 网络检索：需 `pip install scoreseek`（只做本地可不装）
+- 翻译 agent（简谱图片 → .mel）：需设置 `DASHSCOPE_API_KEY`（Qwen 百炼视觉识图，见下文）
 - 游戏内请切换到英文输入法
 
 ## 快速启动
@@ -192,7 +193,26 @@ python search.py 小星星 --jianpu --pick 1   # 直接下载第 1 条结果
 ```
 
 - 结果来自简谱之家（jianpujia.com），**曲谱是 PNG 图片、非文本**，下载到 `downloads/jianpu/`。
-- 图片需先转成简谱文本，再用 `python translate.py 简谱.txt` 翻译成 `.mel`（暂不自动识别图片）。
+- 图片需转成简谱文本再翻译成 `.mel`——可用下面的 agent 自动识别，或人工转录。
+
+### 简谱识别翻译（agent，Qwen 百炼视觉）
+
+一键把简谱之家搜到的**简谱图片**自动转成 `.mel`（搜索 → 下载图片 → Qwen 视觉识图 → 翻译）：
+
+```bash
+# 先配置 API Key（二选一）：
+#   环境变量：set DASHSCOPE_API_KEY=你的key
+#   或在项目根目录建 .env 文件（复制 .env.example 改名 .env，已加入 .gitignore）
+
+python agent.py 夜曲                  # 搜索、选曲、下载、识图、翻译
+python agent.py 夜曲 --pick 1         # 直接取第 1 条结果
+python agent.py 夜曲 --min-sharps     # 自动选调，少用升半音（降低演奏难度）
+python agent.py 夜曲 --no-translate   # 只识图出简谱文本，不翻译
+```
+
+- 视觉模型走 Qwen 百炼的 OpenAI 兼容接口，默认 `qwen-vl-plus`；可用 `--model` 或环境变量 `QWEN_MODEL` 换模型。
+- 识图结果（简谱文本）先打印、并存到 `downloads/jianpu/<曲名>.txt`，方便人工核对/修改后再翻译。
+- 翻译失败时可手工改上面的文本，再 `python translate.py 该文本 --out scores/xxx.mel`。
 
 ## 游戏内任务曲谱（节奏/变调为推测，需实测微调）
 
