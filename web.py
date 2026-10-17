@@ -206,11 +206,24 @@ async function jianpuTranslate() {
   finally { ocrBtn.disabled = false; }
 }
 
-function preview() {
+async function preview() {
   if (!selected) return;
-  audio.src = '/api/audio?id=' + encodeURIComponent(selected.id);
-  audio.play().catch(e => setStatus('播放失败：' + e, true));
-  setStatus('试听中…');
+  setStatus('试听合成中…');
+  try {
+    const r = await fetch('/api/audio?id=' + encodeURIComponent(selected.id));
+    if (!r.ok) {
+      let msg = 'HTTP ' + r.status;
+      try { const d = await r.json(); if (d && d.error) msg = d.error; } catch (_) {}
+      throw new Error(msg);
+    }
+    const blob = await r.blob();
+    if (audio.src && audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
+    audio.src = URL.createObjectURL(blob);
+    await audio.play();
+    setStatus('试听中…');
+  } catch (e) {
+    setStatus('试听失败：' + (e && e.message || e), true);
+  }
 }
 
 async function gamePlay() {
