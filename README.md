@@ -174,13 +174,25 @@ python search.py --download-lakh                   # 下载 Lakh 数据集（约
 - 结果来自公开 MIDI 站（bitmidi / midis101 / midiworld），**灰色版权内容，仅供个人练习，请勿分发**。
 - 下载后自动翻译成 `.mel`，存到 `downloads/` 目录。
 - 可下载 **Lakh MIDI 数据集**（约 1.7 万首欧美流行/经典歌）扩充检索命中率；放到 `lakh/` 目录后自动启用。
-- **中文流行歌几乎没有公开免费 MIDI 源**，搜索命中率低是内容覆盖问题、不是 bug。中文歌建议改用「简谱文本」翻译：
+- **中文流行歌几乎没有公开免费 MIDI 源**，搜索命中率低是内容覆盖问题、不是 bug。中文歌可用 `--jianpu` 到「简谱之家」搜简谱图片（见下节），或改用「简谱文本」翻译：
 
   ```bash
   python translate.py 简谱.txt --out scores/我的曲子.mel
   ```
 
 - MIDI 多为多轨编曲，若主旋律不对可用 `--track N` 换轨。
+
+### 简谱之家（中文简谱图片检索）
+
+中文歌在公开 MIDI 站几乎搜不到，可到「简谱之家」搜中文简谱并下载曲谱图片：
+
+```bash
+python search.py 夜曲 --jianpu              # 搜索 + 选曲 + 下载简谱图片
+python search.py 小星星 --jianpu --pick 1   # 直接下载第 1 条结果
+```
+
+- 结果来自简谱之家（jianpujia.com），**曲谱是 PNG 图片、非文本**，下载到 `downloads/jianpu/`。
+- 图片需先转成简谱文本，再用 `python translate.py 简谱.txt` 翻译成 `.mel`（暂不自动识别图片）。
 
 ## 游戏内任务曲谱（节奏/变调为推测，需实测微调）
 

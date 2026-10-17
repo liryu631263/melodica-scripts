@@ -111,11 +111,49 @@ def _online_search(kw, args):
     return {'title': sel['title'], 'path': mel, 'n_notes': None}
 
 
+def _jianpu_search(kw, args):
+    """简谱之家：搜中文简谱 → 选曲 → 下载曲谱图片（非文本，不自动翻译）。"""
+    from melodica.translate import jianpujia
+
+    print(f'简谱之家搜索「{kw}」……')
+    try:
+        hits = jianpujia.search(kw, limit=args.limit)
+    except Exception as e:
+        print(f'搜索失败：{e}')
+        return 1
+
+    if not hits:
+        print('简谱之家未找到相关简谱。')
+        print('可换个关键词（曲名 / 歌手）再试，或改用 --online 搜 MIDI。')
+        return 0
+
+    print(f'找到 {len(hits)} 首简谱：')
+    for i, h in enumerate(hits, 1):
+        print(f"  [{i}] {h['title']}")
+    sel = _pick(hits, args.pick)
+    if sel is None:
+        return 1
+
+    dest = os.path.join(DOWNLOADS, 'jianpu')
+    print('下载曲谱图片中……')
+    try:
+        paths = jianpujia.download(sel, dest)
+    except Exception as e:
+        print(f'下载失败：{e}')
+        return 1
+    print(f'已下载 {len(paths)} 张曲谱图片：')
+    for p in paths:
+        print('  ' + os.path.relpath(p))
+    print('提示：曲谱是图片，需先转成简谱文本再用 translate.py 翻译（可把图片发给我帮忙识别）。')
+    return 0
+
+
 def main(argv=None):
     _reconfigure_utf8()
     p = argparse.ArgumentParser(description='曲库检索 + 试听/演奏（本地 / 网络）')
     p.add_argument('keyword', nargs='?', default=None, help='曲名（省略则交互输入）')
     p.add_argument('--online', action='store_true', help='网络检索公开 MIDI 源（需 pip install scoreseek）')
+    p.add_argument('--jianpu', action='store_true', help='简谱之家检索中文简谱并下载曲谱图片')
     p.add_argument('--download-lakh', action='store_true', help='下载 Lakh MIDI 数据集（约 234MB，扩充网络检索曲库）')
     p.add_argument('--limit', type=int, default=10, help='网络搜索结果数上限（默认 10）')
     p.add_argument('--pick', type=int, default=None, help='直接选第 N 条结果（跳过选择提示）')
@@ -138,6 +176,9 @@ def main(argv=None):
         print('未输入曲名。')
         return 0
 
+    if args.jianpu:
+        return _jianpu_search(kw, args)
+
     if args.online:
         sel = _online_search(kw, args)
     else:
@@ -145,7 +186,7 @@ def main(argv=None):
         if not items:
             print(f'本地未找到「{kw}」相关曲谱。')
             print('可先用 translate.py 把 MIDI/简谱翻译成 .mel 放入曲库；')
-            print('或加 --online 联网搜索公开 MIDI 源。')
+            print('或加 --jianpu 搜中文简谱图片、--online 联网搜 MIDI。')
             return 0
         sel = _pick(items, args.pick)
 

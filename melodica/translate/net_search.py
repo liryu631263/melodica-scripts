@@ -130,8 +130,8 @@ def no_result_hint(query):
     """搜索无结果时的引导提示（中文歌 / 未装 Lakh / 通用）。"""
     tips = []
     if any('一' <= ch <= '鿿' for ch in query):
-        tips.append('中文歌的 MIDI 几乎没有公开免费源，可改用「简谱文本」翻译：'
-                    'python translate.py 简谱.txt')
+        tips.append('中文歌可到「简谱之家」搜简谱图片：python search.py 曲名 --jianpu')
+        tips.append('或把简谱转成文本翻译：python translate.py 简谱.txt')
         tips.append('或试试英文名 / 拼音搜索')
     if not lakh_available():
         tips.append('可下载 Lakh 数据集扩充欧美流行/经典歌曲库：'
