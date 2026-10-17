@@ -25,6 +25,14 @@ _HEADERS = {
     'Accept-Language': 'zh-CN,zh;q=0.9',
 }
 
+# 标题里带这些词的通常是伴奏/器乐改编谱（钢琴、吉他、和弦等），
+# 主旋律被伴奏盖住、逐音吹出来像杂音，默认排到后面，优先取纯声乐简谱。
+_ACCOMPANIMENT_KEYS = (
+    '钢琴', '伴奏', '和弦', '吉他', '尤克里里', '口琴', '葫芦丝', '笛子',
+    '二胡', '古筝', '琵琶', '小提琴', '大提琴', '电子琴', '弹唱', '指弹',
+    '独奏', '演奏', '变奏', '器乐', '纯音乐', '合奏', '四手联弹',
+)
+
 
 def _open(url, data=None, referer=None):
     headers = dict(_HEADERS)
@@ -73,6 +81,8 @@ def search(query, limit=10):
         out.append({'title': title, 'url': BASE + url, 'id': jid})
         if len(out) >= limit:
             break
+    # 稳定排序：伴奏/器乐改编谱排到后面，优先取纯声乐简谱（默认取第 1 条时更稳）
+    out.sort(key=lambda h: any(k in h['title'] for k in _ACCOMPANIMENT_KEYS))
     return out
 
 

@@ -153,6 +153,27 @@ def _parse_beats(mod):
     return beats
 
 
+def _note_triples(data):
+    """把视觉模型 JSON 里的 notes 归一化成 (d, o, b) 三元组（对象或紧凑数组皆可），非法项跳过。"""
+    for it in data.get('notes') or []:
+        try:
+            if isinstance(it, dict):
+                d = int(it.get('d', 0))
+                o = int(it.get('o', 0))
+                b = float(it.get('b', 1.0) or 1.0)
+            elif isinstance(it, (list, tuple)) and len(it) >= 3:
+                d = int(it[0])
+                o = int(it[1])
+                b = float(it[2] or 1.0)
+            else:
+                continue
+        except (TypeError, ValueError):
+            continue
+        if b <= 0:
+            b = 1.0
+        yield d, o, b
+
+
 def json_to_events(data):
     """把视觉模型返回的结构化 JSON dict 转成 (events, bpm)。
 
@@ -165,17 +186,7 @@ def json_to_events(data):
         tonic = 'C'
     bpm = float(data.get('bpm') or 96.0)
     events = []
-    for it in data.get('notes') or []:
-        if not isinstance(it, dict):
-            continue
-        try:
-            d = int(it.get('d', 0))
-            o = int(it.get('o', 0))
-            b = float(it.get('b', 1.0) or 1.0)
-        except (TypeError, ValueError):
-            continue
-        if b <= 0:
-            b = 1.0
+    for d, o, b in _note_triples(data):
         if d == 0:
             events.append((None, b))
         elif 1 <= d <= 7:
@@ -185,6 +196,29 @@ def json_to_events(data):
     if not events:
         raise JianpuError("识图结果中没有解析到任何音符。")
     return events, bpm
+
+
+def mel_json_to_notes(data):
+    """把「口风琴可直接演奏」的 JSON（MEL_SYSTEM_PROMPT 输出）转成 Note 序列。
+
+    notes 里每个 [d, o, b]：d=1~7 自然音级（0 休止）、o=-1/0/+1 八度、b=拍数。
+    做轻量夹取：音级夹到 1~7、八度夹到 -1/0/+1、非法拍数兜底 1 拍，
+    确保即使模型偶发越界也不会写出无法解析的 .mel。
+    """
+    from melodica.core.notes import Note
+    out = []
+    for d, o, b in _note_triples(data):
+        if b <= 0:
+            b = 1.0
+        if d == 0:
+            out.append(Note(degree=0, beats=b))
+        else:
+            out.append(Note(degree=max(1, min(7, int(d))),
+                            octave=-1 if int(o) < 0 else (1 if int(o) > 0 else 0),
+                            beats=b))
+    if not out:
+        raise JianpuError("模型结果中没有解析到任何音符。")
+    return out
 
 
 def _beats_suffix(b):
@@ -210,15 +244,7 @@ def json_to_jianpu_text(data):
     bpm = data.get('bpm', 96)
     lines = [f'1={key}', f'T={bpm:g}']
     row = []
-    for it in data.get('notes') or []:
-        if not isinstance(it, dict):
-            continue
-        try:
-            d = int(it.get('d', 0))
-            o = int(it.get('o', 0))
-            b = float(it.get('b', 1.0) or 1.0)
-        except (TypeError, ValueError):
-            continue
+    for d, o, b in _note_triples(data):
         if d == 0:
             tok = '0'
         else:

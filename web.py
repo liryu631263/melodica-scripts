@@ -106,6 +106,18 @@ INDEX_HTML = r"""<!doctype html>
       <h2 id="score-title">曲谱</h2>
       <div id="score"></div>
       <div class="actions">
+        <span id="vlOpts" style="display:none">
+          <select id="provider">
+            <option value="">模型：自动</option>
+            <option value="glm">GLM（glm-5.3-flash）</option>
+            <option value="deepseek">DeepSeek（deepseek-flash）</option>
+            <option value="qwen">Qwen（qwen3-vl-plus）</option>
+          </select>
+          <select id="xmode">
+            <option value="end2end">端到端（推荐·准）</option>
+            <option value="twostep">两步式（备选）</option>
+          </select>
+        </span>
         <button id="ocrBtn" onclick="jianpuTranslate()" style="display:none">🖼 识图翻译</button>
         <button class="primary" onclick="preview()">▶ 试听</button>
         <button onclick="gamePlay()">🎮 游戏演奏</button>
@@ -174,6 +186,7 @@ async function select(i) {
   document.getElementById('score-title').textContent = '曲谱 · ' + selected.title;
   const sc = document.getElementById('score');
   document.getElementById('ocrBtn').style.display = selected.kind === 'jianpu' ? '' : 'none';
+  document.getElementById('vlOpts').style.display = selected.kind === 'jianpu' ? '' : 'none';
   if (selected.kind === 'jianpu') {
     sc.innerHTML = '<img src="/api/jianpu_img?id=' + encodeURIComponent(selected.id) + '&n=0" alt="简谱" style="max-width:100%">';
     setStatus('这是简谱图片，点「识图翻译」自动转成可演奏曲谱。');
@@ -192,10 +205,13 @@ async function select(i) {
 async function jianpuTranslate() {
   if (!selected) return;
   const ocrBtn = document.getElementById('ocrBtn');
+  const provider = document.getElementById('provider').value;
+  const xmode = document.getElementById('xmode').value;
   ocrBtn.disabled = true;
-  setStatus('识图翻译中（Qwen 视觉识别，请稍候）…');
+  setStatus('识图翻译中（' + (provider || '自动') + ' 视觉识别，请稍候）…');
   try {
-    const r = await fetch('/api/jianpu_translate?id=' + encodeURIComponent(selected.id), { method: 'POST' });
+    const r = await fetch('/api/jianpu_translate?id=' + encodeURIComponent(selected.id) +
+      '&provider=' + encodeURIComponent(provider) + '&mode=' + encodeURIComponent(xmode), { method: 'POST' });
     const d = await r.json();
     if (d.error) throw new Error(d.error);
     document.getElementById('score').textContent = d.text;
@@ -467,8 +483,11 @@ class Handler(BaseHTTPRequestHandler):
         if hit is None:
             self._json(404, {'error': '无效的简谱 id'})
             return
+        provider = q.get('provider', [''])[0].strip() or None
+        mode = q.get('mode', [''])[0].strip() or None
         try:
-            result = jianpu_agent.transcribe_hit(hit, min_sharps=True)
+            result = jianpu_agent.transcribe_hit(hit, min_sharps=True,
+                                                 provider=provider, mode=mode)
         except Exception as e:
             self._json(500, {'error': str(e)})
             return
