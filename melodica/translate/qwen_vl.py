@@ -6,7 +6,7 @@
 配置（环境变量，或写在项目根目录 .env 文件里，二者可混用）：
     DASHSCOPE_API_KEY  百炼 API Key（必填）
     QWEN_BASE_URL      兼容接口地址（默认北京 maas 端点）
-    QWEN_MODEL         视觉模型名（默认 qwen-vl-plus）
+    QWEN_MODEL         视觉模型名（默认 qwen3-vl-plus）
 """
 
 import base64
@@ -18,7 +18,7 @@ import urllib.request
 from melodica import ROOT
 
 DEFAULT_BASE_URL = 'https://llm-n2tr15mt28kgsvtu.cn-beijing.maas.aliyuncs.com/compatible-mode/v1'
-DEFAULT_MODEL = 'qwen-vl-plus'
+DEFAULT_MODEL = 'qwen3-vl-plus'
 
 _MIME = {
     '.png': 'image/png',
@@ -28,6 +28,8 @@ _MIME = {
     '.gif': 'image/gif',
     '.bmp': 'image/bmp',
 }
+
+_MODIFIERS = set("'-_.,")
 
 
 class QwenError(RuntimeError):
@@ -85,7 +87,8 @@ SYSTEM_PROMPT = """你是简谱（数字谱）转录助手。读取给定的简�
 - 反复记号、连音线等，请按实际演唱顺序把旋律线性展开成一行行
 
 【输出要求】
-只输出简谱文本本身，不要任何解释、说明、Markdown 代码块或前后缀。"""
+- 所有记号（`'` `,` `#` `b` `-` `_` `.`）都必须紧贴数字、中间不要空格，如 `5-`、`5.`、`1_`、`1'`
+- 只输出简谱文本本身，不要任何解释、说明、Markdown 代码块或前后缀。"""
 
 
 def transcribe(image_path, model=None):
@@ -133,7 +136,21 @@ def transcribe(image_path, model=None):
     except (KeyError, IndexError, TypeError) as e:
         raise QwenError(f'API 返回格式异常：{json.dumps(resp, ensure_ascii=False)[:500]}') from e
 
-    return _strip_fences(content)
+    return _normalize_jianpu(_strip_fences(content))
+
+
+def _normalize_jianpu(text):
+    """修正常见 LLM 输出：把与数字分开的时值/八度记号并回数字（如 `5 -` → `5-`）。"""
+    out = []
+    for line in text.splitlines():
+        merged = []
+        for tok in line.split():
+            if tok and set(tok) <= _MODIFIERS and merged and merged[-1] != '|':
+                merged[-1] += tok
+            else:
+                merged.append(tok)
+        out.append(' '.join(merged))
+    return '\n'.join(out)
 
 
 def _strip_fences(text):

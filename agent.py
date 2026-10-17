@@ -7,7 +7,7 @@
     python agent.py 夜曲 --min-sharps     # 翻译时自动选调，少用升半音
 
 依赖：需设置 DASHSCOPE_API_KEY（环境变量，或项目根目录 .env 文件里写
-      DASHSCOPE_API_KEY=xxx）。视觉模型默认 qwen-vl-plus，可用 QWEN_MODEL 覆盖。
+      DASHSCOPE_API_KEY=xxx）。视觉模型默认 qwen3-vl-plus，可用 QWEN_MODEL 覆盖。
 """
 
 import argparse
