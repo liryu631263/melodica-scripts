@@ -15,10 +15,12 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -32,6 +34,7 @@ from melodica.translate import jianpujia, jianpu_agent, net_search
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DOWNLOADS = os.path.join(ROOT, 'downloads')
+RECYCLE_DIR = os.path.join(ROOT, '回收站')
 
 INDEX_HTML = r"""<!doctype html>
 <html lang="zh">
@@ -43,7 +46,11 @@ INDEX_HTML = r"""<!doctype html>
   * { box-sizing: border-box; }
   body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; margin: 0;
          background: #f4f5f7; color: #1f2937; }
-  header { background: #1e293b; color: #fff; padding: 14px 20px; }
+  header { background: #1e293b; color: #fff; padding: 14px 20px; position: relative; }
+  #closeBtn { position: absolute; top: 8px; right: 12px; border: none;
+              background: transparent; color: #cbd5e1; font-size: 18px;
+              cursor: pointer; padding: 2px 10px; border-radius: 6px; }
+  #closeBtn:hover { background: #334155; color: #fff; }
   header h1 { margin: 0; font-size: 20px; }
   header p { margin: 4px 0 0; font-size: 13px; color: #94a3b8; }
   .wrap { max-width: 960px; margin: 0 auto; padding: 16px; }
@@ -55,7 +62,7 @@ INDEX_HTML = r"""<!doctype html>
   button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
   button:hover { filter: brightness(1.05); }
   #list { margin-top: 12px; border: 1px solid #e2e8f0; border-radius: 8px;
-          background: #fff; overflow: hidden; }
+          background: #fff; overflow-y: auto; max-height: 40vh; }
   .row { padding: 10px 14px; border-bottom: 1px solid #f1f5f9; cursor: pointer;
          display: flex; gap: 10px; align-items: baseline; }
   .row:hover { background: #f8fafc; }
@@ -66,6 +73,14 @@ INDEX_HTML = r"""<!doctype html>
               border-radius: 10px; }
   .row .src.online { background: #0ea5e9; }
   .row .src.jianpu { background: #d97706; }
+  .row .del { border: none; background: transparent; color: #cbd5e1; cursor: pointer;
+              padding: 0 6px; font-size: 14px; border-radius: 4px; line-height: 1; }
+  .row .del:hover { color: #dc2626; background: #fee2e2; }
+  .row .chk { margin: 0; accent-color: #2563eb; }
+  .row .mini { border: 1px solid #cbd5e1; background: #fff; color: #2563eb; cursor: pointer;
+               padding: 2px 8px; font-size: 12px; border-radius: 4px; white-space: nowrap; }
+  .row .mini.danger { color: #dc2626; }
+  .row .mini:hover { filter: brightness(1.05); }
   #panel { margin-top: 14px; display: flex; gap: 14px; flex-wrap: wrap; }
   #panel > * { flex: 1 1 400px; }
   .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; }
@@ -83,11 +98,12 @@ INDEX_HTML = r"""<!doctype html>
 </head>
 <body>
 <header>
+  <button id="closeBtn" onclick="closePage()" title="关闭页面">✕</button>
   <h1>🎺 口风琴工具 · 三角洲行动</h1>
   <p>检索 → 翻译 → 试听 / 进游戏演奏，全程本地运行。</p>
 </header>
 <div class="wrap">
-  <div class="bar">
+  <div class="bar" id="bar">
     <input type="text" id="q" placeholder="输入曲名 / 拼音 / 英文名…">
     <select id="mode">
       <option value="local">本地曲库</option>
@@ -96,6 +112,14 @@ INDEX_HTML = r"""<!doctype html>
     </select>
     <button class="primary" onclick="search()">搜索</button>
     <button onclick="search(true)">刷新</button>
+    <button id="batchDelBtn" onclick="batchDelete()" style="display:none">删除所选</button>
+    <button id="recycleBtn" onclick="toggleRecycle()">🗑 回收站</button>
+  </div>
+
+  <div class="bar" id="recycleBar" style="display:none">
+    <span class="muted">回收站</span>
+    <button onclick="purgeAllRecycle()">清空回收站</button>
+    <button onclick="toggleRecycle()">← 返回曲库</button>
   </div>
 
   <div id="list"></div>
@@ -121,6 +145,7 @@ INDEX_HTML = r"""<!doctype html>
         <button id="ocrBtn" onclick="jianpuTranslate()" style="display:none">🖼 识图翻译</button>
         <button class="primary" onclick="preview()">▶ 试听</button>
         <button onclick="gamePlay()">🎮 游戏演奏</button>
+        <button onclick="guidePlay()">🎹 手动演示</button>
         <button onclick="toLibrary()">✚ 入曲库</button>
         <button onclick="download()">⬇ 下载 .mel</button>
       </div>
@@ -140,6 +165,8 @@ let items = [];
 let selected = null;
 let lastHint = null;
 let audio = document.getElementById('audio');
+let view = 'library';
+let recycleItems = [];
 
 async function search(refresh) {
   const q = refresh ? '' : document.getElementById('q').value.trim();
@@ -168,14 +195,19 @@ function render() {
   if (!items.length) {
     el.innerHTML = '<div class="row muted">无匹配结果。' +
       (lastHint ? '<br>' + esc(lastHint) : '') + '</div>';
+    document.getElementById('batchDelBtn').style.display = 'none';
     return;
   }
   el.innerHTML = items.map((it, i) =>
     '<div class="row" id="row' + i + '" onclick="select(' + i + ')">' +
+    (it.deletable ? '<input type="checkbox" class="chk" value="' + i + '" onclick="event.stopPropagation()">' : '') +
     '<span class="title">' + esc(it.title) + '</span>' +
     '<span class="src ' + it.kind + '">' + esc(it.source) + '</span>' +
     '<span class="meta">' + (it.n_notes ?? '—') + ' 音符 · BPM ' + (it.bpm ?? '—') + '</span>' +
+    (it.deletable ? '<button class="del" title="删除" onclick="delScore(' + i + ', event)">🗑</button>' : '') +
     '</div>').join('');
+  document.getElementById('batchDelBtn').style.display =
+    items.some(it => it.deletable) ? '' : 'none';
 }
 
 async function select(i) {
@@ -188,7 +220,7 @@ async function select(i) {
   document.getElementById('ocrBtn').style.display = selected.kind === 'jianpu' ? '' : 'none';
   document.getElementById('vlOpts').style.display = selected.kind === 'jianpu' ? '' : 'none';
   if (selected.kind === 'jianpu') {
-    sc.innerHTML = '<img src="/api/jianpu_img?id=' + encodeURIComponent(selected.id) + '&n=0" alt="简谱" style="max-width:100%">';
+    sc.innerHTML = '<img src="/api/jianpu_img?id=' + encodeURIComponent(selected.id) + '&n=0&t=' + Date.now() + '" alt="简谱" style="max-width:100%">';
     setStatus('这是简谱图片，点「识图翻译」自动转成可演奏曲谱。');
     return;
   }
@@ -248,10 +280,125 @@ async function gamePlay() {
   await post('/api/play?id=' + encodeURIComponent(selected.id));
 }
 
+async function guidePlay() {
+  if (!selected) return;
+  setStatus('启动手动演示（下落音符悬浮窗，照着按）…');
+  await post('/api/guide?id=' + encodeURIComponent(selected.id));
+}
+
+function closePage() {
+  navigator.sendBeacon('/api/quit');
+  window.close();
+  setTimeout(function () {
+    setStatus('如页面未自动关闭，请手动关闭此标签页（Ctrl+W）。');
+  }, 200);
+}
+
 async function toLibrary() {
   if (!selected) return;
   const r = await post('/api/library?id=' + encodeURIComponent(selected.id));
   setStatus(r.message || '已入库。');
+}
+
+async function delScore(i, ev) {
+  ev.stopPropagation();
+  const it = items[i];
+  if (!confirm('将曲谱「' + it.title + '」移入回收站？')) return;
+  try {
+    const r = await post('/api/delete?id=' + encodeURIComponent(it.id));
+    if (r.error) throw new Error(r.error);
+    if (selected && selected.id === it.id) {
+      selected = null;
+      document.getElementById('panel').style.display = 'none';
+    }
+    setStatus(r.message || '已移入回收站。');
+    list();
+  } catch (e) { setStatus('删除失败：' + (e && e.message || e), true); }
+}
+
+async function batchDelete() {
+  const boxes = Array.from(document.querySelectorAll('#list .chk:checked'));
+  if (!boxes.length) { setStatus('请先勾选要删除的曲谱。', true); return; }
+  const its = boxes.map(b => items[+b.value]);
+  if (!confirm('将所选 ' + its.length + ' 首曲谱移入回收站？')) return;
+  try {
+    const r = await post('/api/delete?ids=' + encodeURIComponent(its.map(x => x.id).join(',')));
+    if (r.error) throw new Error(r.error);
+    setStatus(r.message || '已移入回收站。');
+    list();
+  } catch (e) { setStatus('删除失败：' + (e && e.message || e), true); }
+}
+
+function toggleRecycle() {
+  if (view === 'recycle') {
+    view = 'library';
+    document.getElementById('bar').style.display = 'flex';
+    document.getElementById('recycleBar').style.display = 'none';
+    list();
+  } else {
+    view = 'recycle';
+    document.getElementById('bar').style.display = 'none';
+    document.getElementById('recycleBar').style.display = 'flex';
+    renderRecycle();
+  }
+}
+
+async function renderRecycle() {
+  setStatus('加载回收站…');
+  try {
+    const d = await (await fetch('/api/recycle')).json();
+    recycleItems = d.items || [];
+    const el = document.getElementById('list');
+    if (!recycleItems.length) {
+      el.innerHTML = '<div class="row muted">回收站是空的。</div>';
+    } else {
+      el.innerHTML = recycleItems.map((it, i) =>
+        '<div class="row">' +
+        '<span class="title">' + esc(it.title) + '</span>' +
+        '<span class="meta">' + (it.n_notes ?? '—') + ' 音符 · ' + fmtSize(it.size) + '</span>' +
+        '<button class="mini" onclick="restoreRecycle(' + i + ')">↩ 恢复</button>' +
+        '<button class="mini danger" onclick="purgeRecycle(' + i + ')">彻底删除</button>' +
+        '</div>').join('');
+    }
+    setStatus('回收站 · 共 ' + recycleItems.length + ' 个文件。');
+  } catch (e) { setStatus('加载回收站失败：' + e, true); }
+}
+
+async function restoreRecycle(i) {
+  const it = recycleItems[i];
+  try {
+    const r = await post('/api/recycle_restore?name=' + encodeURIComponent(it.name));
+    if (r.error) throw new Error(r.error);
+    setStatus(r.message || '已恢复。');
+    renderRecycle();
+  } catch (e) { setStatus('恢复失败：' + (e && e.message || e), true); }
+}
+
+async function purgeRecycle(i) {
+  const it = recycleItems[i];
+  if (!confirm('彻底删除「' + it.title + '」？此操作不可恢复。')) return;
+  try {
+    const r = await post('/api/recycle_purge?name=' + encodeURIComponent(it.name));
+    if (r.error) throw new Error(r.error);
+    setStatus(r.message || '已彻底删除。');
+    renderRecycle();
+  } catch (e) { setStatus('删除失败：' + (e && e.message || e), true); }
+}
+
+async function purgeAllRecycle() {
+  if (!recycleItems.length) { setStatus('回收站已是空的。'); return; }
+  if (!confirm('彻底删除回收站中全部 ' + recycleItems.length + ' 个文件？此操作不可恢复。')) return;
+  try {
+    const r = await post('/api/recycle_purge_all');
+    if (r.error) throw new Error(r.error);
+    setStatus(r.message || '已清空。');
+    renderRecycle();
+  } catch (e) { setStatus('清空失败：' + (e && e.message || e), true); }
+}
+
+function fmtSize(b) {
+  if (b == null) return '—';
+  return b < 1024 ? b + ' B' : (b / 1024).toFixed(1) + ' KB';
 }
 
 function download() {
@@ -289,6 +436,12 @@ function esc(s) { return String(s).replace(/[&<>"]/g, c =>
 document.getElementById('q').addEventListener('keydown', e => {
   if (e.key === 'Enter') search();
 });
+document.addEventListener('visibilitychange', function () {
+  fetch('/api/ping').catch(function () {});
+});
+setInterval(function () {
+  fetch('/api/ping').catch(function () {});
+}, 2000);
 list();
 </script>
 </body>
@@ -301,6 +454,16 @@ def _safe_name(s, maxlen=40):
     s = re.sub(r'[\\/:*?"<>|]+', '_', s).strip().strip('.')
     s = re.sub(r'\s+', ' ', s)
     return s[:maxlen] or 'untitled'
+
+
+def _watchdog(srv):
+    """心跳看门狗：前端页面定期 ping；页面关闭后 ping 停止，超时则关闭后端服务。"""
+    while True:
+        time.sleep(1.0)
+        if srv.last_seen is not None and (time.monotonic() - srv.last_seen) > srv.ping_timeout:
+            print('[web] 前端已关闭，正在退出服务…')
+            srv.shutdown()
+            break
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -353,6 +516,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == '/':
                 self._send(200, INDEX_HTML, 'text/html; charset=utf-8')
+            elif path == '/api/ping':
+                self.server.last_seen = time.monotonic()
+                self._json(200, {'ok': True})
             elif path == '/api/search':
                 self._search(q)
             elif path == '/api/jianpu':
@@ -365,6 +531,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._audio(q)
             elif path == '/api/download':
                 self._download(q)
+            elif path == '/api/recycle':
+                self._recycle_list(q)
             else:
                 self._json(404, {'error': 'not found'})
         except Exception as e:
@@ -374,16 +542,31 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         q = self._query()
         try:
-            if path == '/api/play':
+            if path == '/api/quit':
+                self._json(200, {'ok': True, 'message': '服务已退出。'})
+                threading.Timer(0.2, self.server.shutdown).start()
+            elif path == '/api/play':
                 mel = self._resolve(q.get('id', [''])[0])
                 subprocess.Popen([sys.executable, os.path.join(ROOT, 'main.py'), mel], cwd=ROOT)
                 self._json(200, {'ok': True, 'message': '已启动游戏演奏。'})
+            elif path == '/api/guide':
+                mel = self._resolve(q.get('id', [''])[0])
+                subprocess.Popen([sys.executable, os.path.join(ROOT, 'guide.py'), mel], cwd=ROOT)
+                self._json(200, {'ok': True, 'message': '已启动手动演示。'})
             elif path == '/api/library':
                 mel = self._resolve(q.get('id', [''])[0])
                 item = self.server.registry[q['id'][0]]
                 dest = os.path.join(library.LIB_DIR, _safe_name(item['title']) + '.mel')
                 shutil.copyfile(mel, dest)
                 self._json(200, {'ok': True, 'message': '已入库：' + dest})
+            elif path == '/api/delete':
+                self._delete(q)
+            elif path == '/api/recycle_restore':
+                self._recycle_restore(q)
+            elif path == '/api/recycle_purge':
+                self._recycle_purge(q)
+            elif path == '/api/recycle_purge_all':
+                self._recycle_purge_all(q)
             elif path == '/api/import':
                 self._import(q)
             elif path == '/api/jianpu_translate':
@@ -422,7 +605,7 @@ class Handler(BaseHTTPRequestHandler):
                 iid = 'l%d' % i
                 reg[iid] = {'id': iid, 'title': it['title'], 'kind': 'local',
                             'source': '本地', 'n_notes': it['n_notes'], 'bpm': it['bpm'],
-                            'path': it['path']}
+                            'path': it['path'], 'deletable': True}
                 out.append(reg[iid])
             self._json(200, {'items': out, 'hint': None})
 
@@ -548,6 +731,87 @@ class Handler(BaseHTTPRequestHandler):
             pass
         self._json(200, {'ok': True, 'out': out})
 
+    def _delete(self, q):
+        raw = q.get('ids', [''])[0] or q.get('id', [''])[0]
+        iids = [x for x in raw.split(',') if x]
+        if not iids:
+            raise ValueError('未指定要删除的曲目。')
+        lib = os.path.realpath(library.LIB_DIR)
+        moved = []
+        for iid in iids:
+            item = self.server.registry.get(iid)
+            if item is None or item['kind'] != 'local':
+                continue
+            mel = item['path']
+            real = os.path.realpath(mel)
+            if real != lib and not real.startswith(lib + os.sep):
+                continue
+            if not os.path.exists(mel):
+                continue
+            os.makedirs(RECYCLE_DIR, exist_ok=True)
+            dest = os.path.join(RECYCLE_DIR, os.path.basename(mel))
+            if os.path.exists(dest):  # 同名文件已在回收站，加时间戳后缀避免覆盖
+                stem, ext = os.path.splitext(os.path.basename(mel))
+                dest = os.path.join(RECYCLE_DIR, f'{stem}_{int(time.time())}{ext}')
+            shutil.move(mel, dest)
+            moved.append(os.path.basename(mel))
+        if not moved:
+            raise ValueError('没有可删除的曲谱。')
+        self._json(200, {'ok': True, 'message': f'已移入回收站 {len(moved)} 首曲谱。'})
+
+    def _recycle_list(self, q):
+        items = []
+        if os.path.isdir(RECYCLE_DIR):
+            for fn in sorted(os.listdir(RECYCLE_DIR)):
+                if not fn.lower().endswith('.mel'):
+                    continue
+                path = os.path.join(RECYCLE_DIR, fn)
+                title, _ = library._meta_from(path)
+                try:
+                    notes, bpm = load_score(path)
+                    n_notes = len(notes)
+                except Exception:
+                    n_notes, bpm = None, None
+                st = os.stat(path)
+                items.append({'name': fn, 'title': title or os.path.splitext(fn)[0],
+                              'n_notes': n_notes, 'bpm': bpm,
+                              'size': st.st_size, 'mtime': int(st.st_mtime)})
+        self._json(200, {'items': items})
+
+    def _recycle_restore(self, q):
+        name = os.path.basename(q.get('name', [''])[0])
+        src = os.path.join(RECYCLE_DIR, name)
+        if not name or not os.path.isfile(src):
+            raise ValueError('回收站中找不到该文件。')
+        stem, ext = os.path.splitext(name)
+        orig = re.sub(r'_\d{10}$', '', stem) + ext  # 去掉移入时加的时间戳后缀
+        os.makedirs(library.LIB_DIR, exist_ok=True)
+        dest = os.path.join(library.LIB_DIR, orig)
+        if os.path.exists(dest):
+            dest = os.path.join(library.LIB_DIR, f'{stem}_{int(time.time())}{ext}')
+        shutil.move(src, dest)
+        self._json(200, {'ok': True, 'message': '已恢复：' + os.path.basename(dest)})
+
+    def _recycle_purge(self, q):
+        name = os.path.basename(q.get('name', [''])[0])
+        src = os.path.join(RECYCLE_DIR, name)
+        if not name or not os.path.isfile(src):
+            raise ValueError('回收站中找不到该文件。')
+        os.remove(src)
+        self._json(200, {'ok': True, 'message': '已彻底删除：' + name})
+
+    def _recycle_purge_all(self, q):
+        n = 0
+        if os.path.isdir(RECYCLE_DIR):
+            for fn in os.listdir(RECYCLE_DIR):
+                if fn.lower().endswith('.mel'):
+                    try:
+                        os.remove(os.path.join(RECYCLE_DIR, fn))
+                        n += 1
+                    except OSError:
+                        pass
+        self._json(200, {'ok': True, 'message': f'已清空回收站（彻底删除 {n} 个文件）。'})
+
 
 def main(argv=None):
     import argparse
@@ -561,6 +825,11 @@ def main(argv=None):
     srv.hits = {}
     srv.resolved = {}
     srv.jianpu_hits = {}
+    srv.last_seen = None
+    # 后台标签页里浏览器会节流 setInterval（约 1 次/分钟），5 秒会误判「页面已关闭」。
+    # 放宽到 5 分钟，覆盖切到游戏后台的场景；前台仍每 2 秒 ping 一次。
+    srv.ping_timeout = 300.0
+    threading.Thread(target=_watchdog, args=(srv,), daemon=True).start()
     print(f'口风琴工具 Web 界面：http://{args.host}:{args.port}')
     print('按 Ctrl+C 退出。')
     try:

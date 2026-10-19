@@ -2,5 +2,6 @@ __pycache__/
 .mypy_cache/
 *.pyc
 downloads/
+回收站/
 _*.mel
 .env

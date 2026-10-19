@@ -201,8 +201,8 @@ def json_to_events(data):
 def mel_json_to_notes(data):
     """把「口风琴可直接演奏」的 JSON（MEL_SYSTEM_PROMPT 输出）转成 Note 序列。
 
-    notes 里每个 [d, o, b]：d=1~7 自然音级（0 休止）、o=-1/0/+1 八度、b=拍数。
-    做轻量夹取：音级夹到 1~7、八度夹到 -1/0/+1、非法拍数兜底 1 拍，
+    notes 里每个 [d, o, b]：d=1~8 自然音级（8=高音 do 逗号键、0 休止）、o=-1/0/+1 八度、b=拍数。
+    做轻量夹取：音级夹到 1~8、八度夹到 -1/0/+1、非法拍数兜底 1 拍，
     确保即使模型偶发越界也不会写出无法解析的 .mel。
     """
     from melodica.core.notes import Note
@@ -213,7 +213,7 @@ def mel_json_to_notes(data):
         if d == 0:
             out.append(Note(degree=0, beats=b))
         else:
-            out.append(Note(degree=max(1, min(7, int(d))),
+            out.append(Note(degree=max(1, min(8, int(d))),
                             octave=-1 if int(o) < 0 else (1 if int(o) > 0 else 0),
                             beats=b))
     if not out:

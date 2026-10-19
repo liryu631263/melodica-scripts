@@ -11,6 +11,7 @@
 """
 
 import ctypes
+import sys
 from ctypes import wintypes
 
 # ---- Win32 结构定义 ----
@@ -170,3 +171,56 @@ def is_key_down(vk):
 
 
 VK_F12 = 0x7B
+
+
+def is_admin():
+    """当前进程是否以管理员权限运行。
+
+    游戏若以管理员身份运行（三角洲行动带 ACE 反作弊，通常如此），注入它的输入
+    必须来自同样管理员权限的进程，否则被 Windows UIPI 拦截——表现为「游戏外能
+    控制、游戏内无效」。
+    """
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def relaunch_as_admin():
+    """用 UAC 提权重新启动本进程（ShellExecuteW + runas）。
+
+    返回 True 表示已成功拉起提权进程，原进程应退出；
+    用户取消 UAC 或失败时返回 False，调用方可决定是否降级继续运行。
+    """
+    if is_admin():
+        return True
+    script = sys.argv[0]
+    params = ' '.join(f'"{a}"' for a in sys.argv[1:])
+    try:
+        ret = ctypes.windll.shell32.ShellExecuteW(
+            None, 'runas', sys.executable,
+            f'"{script}" {params}'.rstrip(), None, 1,
+        )
+        return ret > 32  # ShellExecuteW 返回 >32 表示成功
+    except Exception:
+        return False
+
+
+def ensure_admin(no_elevate=False):
+    """统一入口：非管理员且允许提权时自动重启为管理员。
+
+    返回 'admin'（已是管理员）、'relaunched'（已拉起提权进程，调用方应退出）、
+    'denied'（被取消/失败，降级继续）之一。
+    """
+    if is_admin():
+        return 'admin'
+    if no_elevate:
+        return 'denied'
+    print("当前不是管理员权限。三角洲行动（ACE 反作弊）通常以管理员运行，")
+    print("普通权限注入的键鼠会被 UIPI 拦截——即「游戏外能控制、游戏内无效」。")
+    print("正在请求以管理员身份重启本脚本…（在 UAC 弹窗点「是」；取消则降级继续）")
+    if relaunch_as_admin():
+        return 'relaunched'
+    print("提权被取消或失败，继续以当前权限运行（可能无法注入游戏）。")
+    return 'denied'
+

@@ -2,12 +2,13 @@
 
 游戏内吹奏模式键位（PC 端，建议英文输入法）：
   音符键 : Z X C V B N M  ->  1 2 3 4 5 6 7（do~si 七个自然音）
+           逗号 ,        ->  高音 do（比 do 高一个八度，第 8 个音键）
   变调键 : 按住鼠标右键 = 升八度；部分工具/曲谱中，左键降八度、中键升半音
            （左键/中键在游戏内并不可靠，翻译时统一量化到自然音阶，不用升半音）。
 
-  说明：早期版本还假设过「8 = 高音1（逗号键）」，实测游戏只有 7 个音键，
-  高音 do 应写作 +1（升八度）。degree 8 / sharp 字段保留以兼容旧曲谱，
-  但翻译不再输出。
+  说明：游戏实际有 8 个音键（含逗号键的高音 do）。翻译会把高音 do 写成 degree 8
+  （逗号键），比「1 + 升八度（按住右键）」少按一个鼠标、更准。sharp（升半音）
+  在游戏内不可靠，翻译仍统一量化到自然音阶、不输出升半音。
 
 本模块用「键盘物理扫描码」表示键位（与输入法/键盘布局无关），见 DEGREE_TO_SCAN。
 """
@@ -72,20 +73,25 @@ class Note:
         return 72 + 12 * self.octave + (1 if self.sharp else 0) + DEGREE_TO_SEMITONE[self.degree - 1]
 
 
-# 游戏口风琴实际音阶：do~si 七个自然音（大调音阶，模 12 半音），无「高音1」独立键。
+# 游戏口风琴自然音阶：do~si 七个自然音（大调音阶，模 12 半音）；另有高音 do（逗号键，degree 8）。
 # 八度靠鼠标左/右键降/升；升半音在游戏中并不可靠，翻译时统一量化到自然音阶。
 MAJOR_PC = (0, 2, 4, 5, 7, 9, 11)  # 音级 1~7 相对 do 的半音数
 
 
 def pitch_to_natural_note(midi):
-    """把（已量化到 C 大调的）MIDI 音高映射为自然音阶 Note（音级 1-7 + 八度，无升半音）。
+    """把（已量化到 C 大调的）MIDI 音高映射为自然音阶 Note（音级 1-8 + 八度，无升半音）。
 
+    高音 do 优先映射到 degree 8（逗号键），比「音级 1 + 升八度」少按一个鼠标。
     只接受落在 MAJOR_PC 上的音高（调用方需先量化），否则抛 ValueError。
     """
     midi = int(midi)
     pc = midi % 12
     degree = MAJOR_PC.index(pc) + 1
     octave = (midi - 72 - MAJOR_PC[degree - 1]) // 12
+    if degree == 1:
+        oct8 = (midi - 84) // 12  # 高音 do（逗号键，degree 8）在自然八度 = MIDI 84
+        if abs(oct8) < abs(octave):
+            return Note(degree=8, octave=oct8)
     return Note(degree=degree, octave=octave)
 
 

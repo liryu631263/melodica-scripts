@@ -18,7 +18,7 @@ import argparse
 import sys
 
 from melodica.core.score import load_score, ScoreError
-from melodica.core.input_backend import create_backend, VK_F12
+from melodica.core.input_backend import create_backend, ensure_admin, VK_F12
 from melodica.core.player import Player
 
 
@@ -78,7 +78,11 @@ def main(argv=None):
     p.add_argument('--gap', type=float, default=0.03, help='音符间间隙秒数（默认 0.03）')
     p.add_argument('--list-notes', action='store_true', help='只打印解析结果，不演奏')
     p.add_argument('--smoke', action='store_true', help='冒烟测试键盘注入')
+    p.add_argument('--no-elevate', action='store_true', help='不自动请求管理员权限（游戏管理员运行时可能无法注入）')
     args = p.parse_args(argv)
+
+    if ensure_admin(args.no_elevate) == 'relaunched':
+        return 0
 
     if args.smoke:
         smoke_test()
