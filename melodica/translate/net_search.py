@@ -5,7 +5,7 @@
   属灰色/版权内容，仅供个人练习，请勿分发。
 - 可选本地源：Lakh MIDI 数据集（约 1.7 万首欧美流行/经典歌，234MB），
   放到项目下的 lakh/ 目录（或设置环境变量 MELODICA_LAKH 指向文件/目录）后自动启用。
-  下载：python search.py --download-lakh
+  下载：python cli/search.py --download-lakh
 """
 
 import os
@@ -130,11 +130,11 @@ def no_result_hint(query):
     """搜索无结果时的引导提示（中文歌 / 未装 Lakh / 通用）。"""
     tips = []
     if any('一' <= ch <= '鿿' for ch in query):
-        tips.append('中文歌可到「简谱之家」搜简谱图片：python search.py 曲名 --jianpu')
-        tips.append('或把简谱转成文本翻译：python translate.py 简谱.txt')
+        tips.append('中文歌可到「简谱之家」搜简谱图片：python cli/search.py 曲名 --jianpu')
+        tips.append('或把简谱转成文本翻译：python cli/translate_cli.py 简谱.txt')
         tips.append('或试试英文名 / 拼音搜索')
     if not lakh_available():
         tips.append('可下载 Lakh 数据集扩充欧美流行/经典歌曲库：'
-                    'python search.py --download-lakh')
+                    'python cli/search.py --download-lakh')
     tips.append('公开 MIDI 站以英文歌名 / 经典 / 游戏音乐为主')
     return '；'.join(tips) + '。'

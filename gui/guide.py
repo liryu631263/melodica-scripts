@@ -9,7 +9,7 @@
 - 块上标记：↑ = 按住鼠标右键（升八度）、↓ = 按住鼠标左键（降八度）、# = 按住中键（升半音）。
 
 用法：
-    python guide.py 曲谱.mel [--bpm N] [--countdown S] [--speed PX/S] [--height PX] [--no-topmost]
+    python gui/guide.py 曲谱.mel [--bpm N] [--countdown S] [--speed PX/S] [--height PX] [--no-topmost]
 
 操作：
     点击轨道区 / 空格 = 开始（重开）；按住顶部灰色条拖动 = 移动窗口；Esc = 退出。
@@ -21,6 +21,9 @@ import os
 import sys
 import time
 import tkinter as tk
+
+# 本脚本位于 gui/ 子目录，先把仓库根加进 sys.path，保证能 import melodica
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from melodica.core.notes import DEGREE_TO_LABEL
 from melodica.core.score import load_score, ScoreError

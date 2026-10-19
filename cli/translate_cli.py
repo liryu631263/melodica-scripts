@@ -1,8 +1,8 @@
 """曲谱翻译：MIDI / 简谱文本 -> 口风琴 .mel 曲谱。
 
 用法：
-    python translate.py input.mid [选项]     # MIDI 文件（.mid/.midi）
-    python translate.py input.txt [选项]     # 简谱文本（.txt/.jianpu/.jp）
+    python cli/translate_cli.py input.mid [选项]     # MIDI 文件（.mid/.midi）
+    python cli/translate_cli.py input.txt [选项]     # 简谱文本（.txt/.jianpu/.jp）
 
 选项：
     --track N       选择 MIDI 轨道（默认自动选最像主旋律的轨）
@@ -13,21 +13,19 @@
     --out PATH      输出 .mel 路径（默认 <输入名>.mel）
     --list-notes    只打印解析结果，不写文件
 
-输出为 .mel，可直接用 simulator.py 试听、或用 main.py 在游戏内演奏。
+输出为 .mel，可直接用 gui/simulator.py 试听、或用 main.py 在游戏内演奏。
 """
 
 import argparse
 import os
 import sys
 
-from melodica.core.notes import MAJOR_PC, Note, pitch_to_natural_note
+# 本脚本位于 cli/ 子目录，先把仓库根加进 sys.path，保证能 import melodica
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from melodica.core.score import notes_to_text
 from melodica.translate import jianpu, midi_import
-
-# 自然音区（不按鼠标）对应的 MIDI 范围：do(72) ~ si(83)
-_SWEET_LO, _SWEET_HI = 72, 83
-# 推荐范围：do(72) ~ 高音si(95)，即「自然音区 + 升八度」，尽量少用降八度
-_RANGE_LO, _RANGE_HI = 72, 95
+from melodica.translate.quantize import events_to_notes
 
 
 def extract_melody(raw_notes, gap_eps=0.1):
@@ -55,30 +53,6 @@ def extract_melody(raw_notes, gap_eps=0.1):
         events.append((n.pitch, n.duration))
         t = n.start + n.duration
     return events
-
-
-def _snap_to_major(pc):
-    """返回 (最近的大调音级半音, 误差半音数)，大调主音视为 0。"""
-    best = min(MAJOR_PC, key=lambda m: min((pc - m) % 12, (m - pc) % 12))
-    err = min((pc - best) % 12, (best - pc) % 12)
-    return best, err
-
-
-def _circ_delta(a, b):
-    """音级 a 到 b 的最小有符号半音位移（-6..+5）。"""
-    return ((b - a + 6) % 12) - 6
-
-
-def _octave_fit(pitches):
-    """按整八度平移，把旋律中心对齐到自然音区，尽量落在 do~高音si 内（少用降八度）。"""
-    lo, hi = min(pitches), max(pitches)
-    center = (lo + hi) / 2
-    shift = int(round(((_SWEET_LO + _SWEET_HI) / 2 - center) / 12)) * 12
-    if lo + shift < _RANGE_LO:
-        shift += 12
-    elif hi + shift > _RANGE_HI:
-        shift -= 12
-    return shift
 
 
 def _pick_track(tracks):
@@ -113,48 +87,6 @@ def _pick_track(tracks):
         return max(candidates, key=lambda i: len(tracks[i]) * (1 - _overlap_rate(tracks[i])))
     # 没有明显旋律轨时，退回音符最多的轨（保持原有行为）
     return max(range(len(tracks)), key=lambda i: len(tracks[i]))
-
-
-def events_to_notes(events, grid=0.25, transpose=0, min_sharps=False):
-    """把 (pitch|None, beats) 事件序列翻译成自然音阶 Note 序列（音级 1-8 + 八度，无半音）。
-
-    游戏口风琴有 do~si 七个自然音 + 高音 do（逗号键）；升半音不可靠，因此这里把旋律
-    量化到最近的大调音阶：先选一个误差最小的调，再把每个音就近归到该调的自然音级，
-    最后整八度居中；高音 do 映射到 degree 8（逗号键），其余音级 1-7。
-    """
-    # 1. 时值量化
-    ev = []
-    for p, d in events:
-        q = round(d / grid) * grid if d > 0 else grid
-        ev.append((p, max(grid, q)))
-
-    # 2. 手动移调（半音，作用于量化前的原始音高）
-    if transpose:
-        ev = [(None if p is None else p + transpose, d) for p, d in ev]
-
-    # 3. 量化到自然大调音阶（选调 + 就近归音级，再转回 C 大调）
-    pitches = [p for p, _ in ev if p is not None]
-    if pitches:
-        k = min(range(12), key=lambda T: sum(_snap_to_major((p - T) % 12)[1] for p in pitches))
-        snapped = {}
-        for p in set(pitches):
-            best, _ = _snap_to_major((p - k) % 12)
-            target = (k + best) % 12
-            delta = _circ_delta(p % 12, target)
-            snapped[p] = p + delta - k   # 就近归音级，并整体移到 C 大调
-        shift = _octave_fit(list(snapped.values()))
-        ev = [(None if p is None else snapped[p] + shift, d) for p, d in ev]
-
-    # 4. 音高映射（自然音阶）
-    notes = []
-    for p, d in ev:
-        if p is None:
-            notes.append(Note(degree=0, beats=d))
-        else:
-            n = pitch_to_natural_note(p)
-            n.beats = d
-            notes.append(n)
-    return notes
 
 
 def describe(n):
@@ -246,7 +178,7 @@ def main(argv=None):
     with open(out, 'w', encoding='utf-8') as f:
         f.write(notes_to_text(notes, bpm))
     print(f"已翻译 {len(notes)} 个音符 -> {out}（BPM={bpm:g}）。")
-    print(f"可试听：python simulator.py {out}")
+    print(f"可试听：python gui/simulator.py {out}")
     return 0
 
 

@@ -11,14 +11,18 @@
   - 反作弊：ACE 是否拦截合成输入，需在游戏内实测。
 
 用法：
-    python verify_input.py [auto|demo] [--interval 0.15]
+    python tools/verify_input.py [auto|demo] [--interval 0.15]
 """
 
 import argparse
 import ctypes
 import functools
+import os
 import sys
 import time
+
+# 本脚本位于 tools/ 子目录，先把仓库根加进 sys.path，保证能 import melodica
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from melodica.core.input_backend import Win32Backend, ensure_admin, is_key_down
 from melodica.core.notes import DEGREE_TO_SCAN

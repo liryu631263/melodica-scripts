@@ -93,23 +93,3 @@ def pitch_to_natural_note(midi):
         if abs(oct8) < abs(octave):
             return Note(degree=8, octave=oct8)
     return Note(degree=degree, octave=octave)
-
-
-def pitch_to_note(midi):
-    """把绝对 MIDI 音高映射为口风琴音符编码（midi() 的逆运算），优先少用鼠标变调。
-
-    规则：优先落在自然音区（八度 0，不按鼠标）；C/C♯ 处于八度边界时，
-    用「高音 1」键（音级 8）代替升八度，进一步减少需要按住的鼠标键。
-    """
-    midi = int(midi)
-    pc = midi % 12
-    sharp = pc in (1, 3, 6, 8, 10)
-    degree = {0: 1, 1: 1, 2: 2, 3: 2, 4: 3, 5: 4, 6: 4, 7: 5, 8: 5, 9: 6, 10: 6, 11: 7}[pc]
-    semi = DEGREE_TO_SEMITONE[degree - 1]
-    octave = (midi - 72 - (1 if sharp else 0) - semi) // 12
-    # C(0) 与 C♯(1) 存在「高音 1」键的等价编码，选鼠标负担更小的那个
-    if pc in (0, 1):
-        oct8 = (midi - 84 - pc) // 12
-        if abs(oct8) < abs(octave):
-            return Note(degree=8, octave=oct8, sharp=sharp)
-    return Note(degree=degree, octave=octave, sharp=sharp)

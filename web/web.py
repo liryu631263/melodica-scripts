@@ -3,10 +3,10 @@
 纯标准库实现（http.server），无需 Flask 等依赖。只监听 127.0.0.1。
 
 用法：
-    python web.py [--port 8000]
+    python web/web.py [--port 8000]
     然后浏览器打开 http://127.0.0.1:8000
 
-功能与 app.py（Tkinter 版）一致：
+功能：
   - 本地曲库 / 联网 MIDI 检索
   - 浏览器内试听（服务器合成 WAV 返回 <audio>）
   - 游戏演奏（服务器 subprocess 启动 main.py）
@@ -24,17 +24,20 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-import library
-import translate
+# 本脚本位于 web/ 子目录，先把仓库根加进 sys.path，保证能 import melodica
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import urllib.request
 
+from melodica import ROOT
+from melodica import library
 from melodica.core import audio
 from melodica.core.score import load_score
 from melodica.translate import jianpujia, jianpu_agent, net_search
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
 DOWNLOADS = os.path.join(ROOT, 'downloads')
 RECYCLE_DIR = os.path.join(ROOT, '回收站')
+CLI_TRANSLATE = os.path.join(ROOT, 'cli', 'translate_cli.py')
 
 INDEX_HTML = r"""<!doctype html>
 <html lang="zh">
@@ -504,7 +507,7 @@ class Handler(BaseHTTPRequestHandler):
         mid = net_search.download_midi(hit)
         os.makedirs(DOWNLOADS, exist_ok=True)
         mel = os.path.join(DOWNLOADS, _safe_name(item['title']) + '.mel')
-        if translate.main([mid, '--out', mel, '--min-sharps']) != 0:
+        if subprocess.call([sys.executable, CLI_TRANSLATE, mid, '--out', mel, '--min-sharps'], cwd=ROOT) != 0:
             raise RuntimeError('翻译失败，见服务器控制台。')
         self.server.resolved[iid] = mel
         return mel
@@ -551,7 +554,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, {'ok': True, 'message': '已启动游戏演奏。'})
             elif path == '/api/guide':
                 mel = self._resolve(q.get('id', [''])[0])
-                subprocess.Popen([sys.executable, os.path.join(ROOT, 'guide.py'), mel], cwd=ROOT)
+                subprocess.Popen([sys.executable, os.path.join(ROOT, 'gui', 'guide.py'), mel], cwd=ROOT)
                 self._json(200, {'ok': True, 'message': '已启动手动演示。'})
             elif path == '/api/library':
                 mel = self._resolve(q.get('id', [''])[0])
@@ -723,7 +726,7 @@ class Handler(BaseHTTPRequestHandler):
             f.write(data)
         base = os.path.splitext(os.path.basename(name))[0]
         out = os.path.join(library.LIB_DIR, _safe_name(base) + '.mel')
-        if translate.main([tmp, '--out', out, '--min-sharps']) != 0:
+        if subprocess.call([sys.executable, CLI_TRANSLATE, tmp, '--out', out, '--min-sharps'], cwd=ROOT) != 0:
             raise RuntimeError('翻译失败，见服务器控制台。')
         try:
             os.remove(tmp)

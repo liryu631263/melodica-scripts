@@ -7,13 +7,17 @@
   - 复用 melodica.py / score.py / audio.py，与真实口风琴同一套音符模型。
 
 用法：
-    python simulator.py [曲谱文件]
+    python gui/simulator.py [曲谱文件]
 """
 
+import os
 import sys
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox
+
+# 本脚本位于 gui/ 子目录，先把仓库根加进 sys.path，保证能 import melodica
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from melodica.core import audio
 from melodica.core.notes import Note

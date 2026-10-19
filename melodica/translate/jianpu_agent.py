@@ -9,6 +9,7 @@ import os
 from melodica import ROOT
 from melodica.core.score import notes_to_text
 from melodica.translate import jianpu, jianpujia, qwen_vl
+from melodica.translate.quantize import events_to_notes
 
 DOWNLOADS = os.path.join(ROOT, 'downloads')
 SCORES = os.path.join(ROOT, 'scores')
@@ -88,8 +89,6 @@ def transcribe_hit(hit, min_sharps=False, bpm=None, model=None, translate=True, 
     if not translate:
         return result
 
-    import translate as translate_cli
-
     print('翻译成 .mel ……')
     try:
         events, parsed_bpm = jianpu.json_to_events(data)
@@ -97,8 +96,8 @@ def transcribe_hit(hit, min_sharps=False, bpm=None, model=None, translate=True, 
         raise RuntimeError(f'识图结果无法解析：{e}') from e
 
     out_bpm = bpm if bpm is not None else parsed_bpm
-    notes = translate_cli.events_to_notes(events, min_sharps=min_sharps)
-    # 去首尾休止（与 translate.py 保持一致，避免开头/结尾空等）
+    notes = events_to_notes(events, min_sharps=min_sharps)
+    # 去首尾休止（与 translate_cli.py 保持一致，避免开头/结尾空等）
     while notes and notes[0].is_rest:
         notes.pop(0)
     while notes and notes[-1].is_rest:

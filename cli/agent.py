@@ -1,12 +1,12 @@
 """口风琴「翻译 agent」：简谱之家搜曲 → 下载图片 → 视觉识图（GLM/DeepSeek/Qwen）→ 翻译成 .mel。
 
 用法：
-    python agent.py 夜曲                  # 搜索、选曲、下载、识图、翻译（默认 GLM）
-    python agent.py 夜曲 --pick 1         # 直接取第 1 条搜索结果
-    python agent.py 夜曲 --no-translate   # 只下载图片 + 识图出简谱文本，不翻译
-    python agent.py 夜曲 --min-sharps     # 翻译时自动选调，少用升半音
-    python agent.py 夜曲 --provider qwen  # 换 Qwen 模型
-    python agent.py 夜曲 --mode twostep   # 强制两步式（只看图+本地量化），与端到端对比
+    python cli/agent.py 夜曲                  # 搜索、选曲、下载、识图、翻译（默认 GLM）
+    python cli/agent.py 夜曲 --pick 1         # 直接取第 1 条搜索结果
+    python cli/agent.py 夜曲 --no-translate   # 只下载图片 + 识图出简谱文本，不翻译
+    python cli/agent.py 夜曲 --min-sharps     # 翻译时自动选调，少用升半音
+    python cli/agent.py 夜曲 --provider qwen  # 换 Qwen 模型
+    python cli/agent.py 夜曲 --mode twostep   # 强制两步式（只看图+本地量化），与端到端对比
 
 依赖：需设置视觉模型 API Key（环境变量，或项目根目录 .env 文件里写）。
       默认 GLM：VL_PROVIDER=glm + GLM_API_KEY（视觉模型 glm-5.3-flash，可用 GLM_MODEL 覆盖）。
@@ -18,9 +18,10 @@ import argparse
 import os
 import sys
 
-from melodica.translate import jianpujia, jianpu_agent
+# 本脚本位于 cli/ 子目录，先把仓库根加进 sys.path，保证能 import melodica
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+from melodica.translate import jianpujia, jianpu_agent
 
 
 def _reconfigure_utf8():
@@ -104,7 +105,7 @@ def main(argv=None):
         return 0
 
     print('完成：' + os.path.relpath(result['mel_path']))
-    print('可试听：python simulator.py ' + os.path.relpath(result['mel_path']))
+    print('可试听：python gui/simulator.py ' + os.path.relpath(result['mel_path']))
     return 0
 
 

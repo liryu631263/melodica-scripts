@@ -1,12 +1,12 @@
 """曲库检索 + 演奏入口：输入曲名 → 搜索 → 选曲 → 试听/演奏。
 
 本地检索（scores/ 曲库）：
-    python search.py 小星星
-    python search.py 小星星 --sim / --game / --show
+    python cli/search.py 小星星
+    python cli/search.py 小星星 --sim / --game / --show
 
 网络检索（公开 MIDI 站，灰色版权内容仅供个人练习，需 pip install scoreseek）：
-    python search.py "happy birthday" --online
-    python search.py "canon" --online --pick 1 --sim
+    python cli/search.py "happy birthday" --online
+    python cli/search.py "canon" --online --pick 1 --sim
 """
 
 import argparse
@@ -15,9 +15,12 @@ import re
 import subprocess
 import sys
 
-import library
+# 本脚本位于 cli/ 子目录，先把仓库根加进 sys.path，保证能 import melodica
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+from melodica import ROOT
+from melodica import library
+
 DOWNLOADS = os.path.join(ROOT, 'downloads')
 
 
@@ -104,8 +107,8 @@ def _online_search(kw, args):
     if args.bpm is not None:
         argv += ['--bpm', str(args.bpm)]
 
-    import translate
-    if translate.main(argv) != 0:
+    import translate_cli
+    if translate_cli.main(argv) != 0:
         print('翻译失败。')
         return None
     return {'title': sel['title'], 'path': mel, 'n_notes': None}
@@ -144,7 +147,7 @@ def _jianpu_search(kw, args):
     print(f'已下载 {len(paths)} 张曲谱图片：')
     for p in paths:
         print('  ' + os.path.relpath(p))
-    print('提示：曲谱是图片，需先转成简谱文本再用 translate.py 翻译（可把图片发给我帮忙识别）。')
+    print('提示：曲谱是图片，需先转成简谱文本再用 cli/translate_cli.py 翻译（可把图片发给我帮忙识别）。')
     return 0
 
 
@@ -185,7 +188,7 @@ def main(argv=None):
         items = library.search(kw, library.scan(args.dir))
         if not items:
             print(f'本地未找到「{kw}」相关曲谱。')
-            print('可先用 translate.py 把 MIDI/简谱翻译成 .mel 放入曲库；')
+            print('可先用 cli/translate_cli.py 把 MIDI/简谱翻译成 .mel 放入曲库；')
             print('或加 --jianpu 搜中文简谱图片、--online 联网搜 MIDI。')
             return 0
         sel = _pick(items, args.pick)
@@ -212,7 +215,7 @@ def main(argv=None):
     path = sel['path']
     if action == 'sim':
         print('启动模拟器试听……')
-        return _run('simulator.py', path)
+        return _run(os.path.join('gui', 'simulator.py'), path)
     if action == 'game':
         print('启动游戏演奏（默认 5 秒倒计时，请趁此切到游戏窗口，F12 随时停）……')
         return _run('main.py', path)

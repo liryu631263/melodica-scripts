@@ -1,0 +1,11 @@
+# 三角洲行动 · 口风琴 —— Python 依赖
+#
+# 除下面两项外，项目全部使用 Python 标准库（tkinter / http.server / ctypes /
+# winsound / urllib / argparse / dataclasses 等），无需安装任何第三方包。
+
+# 核心：MIDI 文件解析（python cli/translate_cli.py 输入.mid 需要；识图翻译 / 演奏 / 模拟器用不到）
+mido>=1.3
+
+# 可选：网络曲谱检索（python cli/search.py --online 需要）
+# 取消下一行注释即可启用：
+# scoreseek
